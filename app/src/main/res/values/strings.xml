@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Win11 Launcher</string>
+    <string name="desktop_this_pc">This PC</string>
+    <string name="desktop_recycle_bin">Recycle Bin</string>
+    <string name="desktop_settings">Personalize</string>
+    <string name="desktop_files">User Files</string>
+    <string name="desktop_browser">Edge</string>
+    <string name="start_search_placeholder">Type here to search</string>
+    <string name="start_pinned">Pinned</string>
+    <string name="start_all_apps">All apps</string>
+    <string name="start_back">Back</string>
+    <string name="start_recommended">Recommended</string>
+</resources>

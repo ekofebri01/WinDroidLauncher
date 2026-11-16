@@ -1,0 +1,6 @@
+{
+  "name": "Win11 Launcher",
+  "description": "Modern Windows 11 desktop experience launcher for Android with authentic taskbar, system tray, start menu, widgets, and desktop windows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
