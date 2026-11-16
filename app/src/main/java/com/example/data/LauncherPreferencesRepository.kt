@@ -35,6 +35,10 @@ class LauncherPreferencesRepository(private val context: Context) {
         val RECENT_APP_PACKAGES = stringPreferencesKey("recent_app_packages")
         val HIDDEN_DEFAULT_SHORTCUTS = stringSetPreferencesKey("hidden_default_shortcuts")
         val SORT_ALPHABETICALLY = booleanPreferencesKey("sort_alphabetically")
+        val SAFE_HOME_GUARD = booleanPreferencesKey("safe_home_guard")
+        val GITHUB_REPO_SLUG = stringPreferencesKey("github_repo_slug")
+        val AUTO_CHECK_UPDATES = booleanPreferencesKey("auto_check_updates")
+        val PENDING_UPDATE_CLEANUP_PATH = stringPreferencesKey("pending_update_cleanup_path")
     }
 
     val preferencesFlow: Flow<LauncherPreferences> = context.launcherDataStore.data.map { prefs ->
@@ -59,7 +63,10 @@ class LauncherPreferencesRepository(private val context: Context) {
             desktopAppPackages = decodeList(prefs[Keys.DESKTOP_APP_PACKAGES]),
             recentAppPackages = decodeList(prefs[Keys.RECENT_APP_PACKAGES]),
             hiddenDefaultShortcuts = prefs[Keys.HIDDEN_DEFAULT_SHORTCUTS] ?: emptySet(),
-            sortAlphabetically = prefs[Keys.SORT_ALPHABETICALLY] ?: false
+            sortAlphabetically = prefs[Keys.SORT_ALPHABETICALLY] ?: false,
+            safeHomeGuardEnabled = prefs[Keys.SAFE_HOME_GUARD] ?: true,
+            githubRepoSlug = prefs[Keys.GITHUB_REPO_SLUG] ?: "",
+            autoCheckUpdates = prefs[Keys.AUTO_CHECK_UPDATES] ?: true
         )
     }
 
@@ -109,6 +116,29 @@ class LauncherPreferencesRepository(private val context: Context) {
 
     suspend fun setSortAlphabetically(sort: Boolean) {
         context.launcherDataStore.edit { it[Keys.SORT_ALPHABETICALLY] = sort }
+    }
+
+    suspend fun setSafeHomeGuard(enabled: Boolean) {
+        context.launcherDataStore.edit { it[Keys.SAFE_HOME_GUARD] = enabled }
+    }
+
+    suspend fun setGitHubRepoSlug(slug: String) {
+        context.launcherDataStore.edit { it[Keys.GITHUB_REPO_SLUG] = slug }
+    }
+
+    suspend fun setAutoCheckUpdates(enabled: Boolean) {
+        context.launcherDataStore.edit { it[Keys.AUTO_CHECK_UPDATES] = enabled }
+    }
+
+    val pendingUpdateCleanupFlow: Flow<String?> = context.launcherDataStore.data.map { prefs ->
+        prefs[Keys.PENDING_UPDATE_CLEANUP_PATH]
+    }
+
+    suspend fun setPendingUpdateCleanupPath(path: String?) {
+        context.launcherDataStore.edit { prefs ->
+            if (path.isNullOrBlank()) prefs.remove(Keys.PENDING_UPDATE_CLEANUP_PATH)
+            else prefs[Keys.PENDING_UPDATE_CLEANUP_PATH] = path
+        }
     }
 
     suspend fun togglePinToStart(packageName: String, fallbackSeed: List<String>) {

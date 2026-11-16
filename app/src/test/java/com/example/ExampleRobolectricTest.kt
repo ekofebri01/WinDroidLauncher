@@ -8,11 +8,15 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.test.core.app.ApplicationProvider
+import com.example.data.GitHubUpdateRepository
+import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -162,5 +166,44 @@ class ExampleRobolectricTest {
         composeRule.onNodeWithTag("window_close_FILE_EXPLORER").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("window_FILE_EXPLORER").assertDoesNotExist()
+    }
+
+    @Test
+    fun `safe home launcher dialog and github update settings work cleanly`() {
+        composeRule.waitForIdle()
+
+        // Open Personalize window from desktop shortcut
+        composeRule.onNodeWithTag("desktop_shortcut_sys_personalize").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("window_SETTINGS_PERSONALIZE").assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_home_launcher_card").assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_github_update_card").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_github_repo_input").assertIsDisplayed()
+
+        // Open Safe Home Chooser Dialog
+        composeRule.onNodeWithTag("settings_set_default_home").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("safe_home_dialog").assertIsDisplayed()
+        composeRule.onNodeWithTag("safe_home_confirm_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("safe_home_preview_button").assertIsDisplayed()
+
+        // Stay in safe preview mode to dismiss
+        composeRule.onNodeWithTag("safe_home_preview_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("safe_home_dialog").assertDoesNotExist()
+    }
+
+    @Test
+    fun `downloaded update apk file is deleted after cleanup`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
+        val dummyApk = File(updatesDir, "win11_update_v2.0.0.apk").apply {
+            writeBytes(byteArrayOf(0x50, 0x4B, 0x03, 0x04, 1, 2, 3))
+        }
+        assertTrue(dummyApk.exists())
+
+        val cleaned = GitHubUpdateRepository().cleanupUpdateFiles(context, dummyApk.absolutePath)
+        assertTrue(cleaned)
+        assertFalse(dummyApk.exists())
     }
 }

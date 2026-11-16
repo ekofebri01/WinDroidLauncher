@@ -30,9 +30,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,6 +47,9 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -55,6 +61,7 @@ import com.example.model.ShortcutKind
 import com.example.model.WallpaperOption
 import com.example.ui.components.AppManagerWindowContent
 import com.example.ui.components.PersonalizeWindowContent
+import com.example.ui.components.SafeHomeChooserDialog
 import com.example.ui.components.ThisPcWindowContent
 import com.example.ui.components.UserFilesWindowContent
 import com.example.ui.components.Win11CalendarFlyout
@@ -62,6 +69,7 @@ import com.example.ui.components.Win11ContextMenuDialog
 import com.example.ui.components.Win11DesktopGrid
 import com.example.ui.components.Win11FileExplorerContent
 import com.example.ui.components.Win11HiddenTrayFlyout
+import com.example.ui.components.Win11InAppUpdateDialog
 import com.example.ui.components.Win11LockScreen
 import com.example.ui.components.Win11QuickSettingsFlyout
 import com.example.ui.components.Win11StartMenu
@@ -74,6 +82,16 @@ import com.example.viewmodel.FileExplorerViewModel
 import com.example.viewmodel.LauncherViewModel
 
 class MainActivity : ComponentActivity() {
+
+    private var homeIntentSeq by mutableIntStateOf(0)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.hasCategory(Intent.CATEGORY_HOME)) {
+            homeIntentSeq++
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,7 +106,49 @@ class MainActivity : ComponentActivity() {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
             val explorerState by explorerViewModel.state.collectAsStateWithLifecycle()
             val explorerToast by explorerViewModel.toastEvent.collectAsStateWithLifecycle()
+            val installPrompt by viewModel.installPromptIntent.collectAsStateWithLifecycle()
             val context = LocalContext.current
+            val lifecycleOwner = LocalLifecycleOwner.current
+
+            val homeRoleLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.StartActivityForResult()
+            ) {
+                viewModel.refreshHomeLauncherStatus()
+            }
+
+            val unknownSourcesLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.StartActivityForResult()
+            ) {
+                viewModel.onResumeCheckInstallPermission()
+            }
+
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME) {
+                        viewModel.refreshHomeLauncherStatus()
+                        viewModel.onResumeCheckInstallPermission()
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+            }
+
+            LaunchedEffect(homeIntentSeq) {
+                if (homeIntentSeq > 0) {
+                    viewModel.handleHomeIntent()
+                }
+            }
+
+            LaunchedEffect(installPrompt) {
+                installPrompt?.let { promptIntent ->
+                    runCatching {
+                        context.startActivity(promptIntent)
+                    }.onFailure {
+                        viewModel.showToast("Tidak dapat membuka prompt instalasi sistem")
+                    }
+                    viewModel.clearInstallPromptIntent()
+                }
+            }
 
             val photoPickerLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.PickVisualMedia()
@@ -149,11 +209,13 @@ class MainActivity : ComponentActivity() {
             // Intercept Back button cleanly for panels/windows (standard launcher behavior)
             BackHandler(
                 enabled = state.isLocked ||
+                    state.showSafeHomeDialog ||
                     state.activePanel != ActivePanel.NONE ||
                     state.openWindows.any { !it.isMinimized } ||
                     state.contextMenu != null
             ) {
                 when {
+                    state.showSafeHomeDialog -> viewModel.dismissSafeHomeDialog()
                     state.contextMenu != null -> viewModel.dismissContextMenu()
                     state.activePanel != ActivePanel.NONE -> viewModel.closeAllPanels()
                     state.activeWindowType == DesktopWindowType.FILE_EXPLORER &&
@@ -180,7 +242,24 @@ class MainActivity : ComponentActivity() {
                         )
                     },
                     onMountDeviceFolder = { mountFolderLauncher.launch(null) },
-                    onImportFile = { importFileLauncher.launch(arrayOf("*/*")) }
+                    onImportFile = { importFileLauncher.launch(arrayOf("*/*")) },
+                    onLaunchSystemHomeRole = {
+                        viewModel.dismissSafeHomeDialog()
+                        val roleIntent = viewModel.createHomeRoleRequestIntent()
+                        if (roleIntent != null) {
+                            runCatching { homeRoleLauncher.launch(roleIntent) }
+                                .onFailure { viewModel.openHomeLauncherSettings() }
+                        } else {
+                            viewModel.openHomeLauncherSettings()
+                        }
+                    },
+                    onRequestUnknownSourcesPermission = {
+                        runCatching {
+                            unknownSourcesLauncher.launch(viewModel.openUnknownSourcesPermission())
+                        }.onFailure {
+                            viewModel.showToast("Tidak dapat membuka pengaturan izin sumber tidak dikenal")
+                        }
+                    }
                 )
             }
         }
@@ -195,9 +274,12 @@ private fun Win11DesktopRoot(
     explorerViewModel: FileExplorerViewModel,
     onPickCustomWallpaper: () -> Unit,
     onMountDeviceFolder: () -> Unit,
-    onImportFile: () -> Unit
+    onImportFile: () -> Unit,
+    onLaunchSystemHomeRole: () -> Unit,
+    onRequestUnknownSourcesPermission: () -> Unit
 ) {
     val prefs = state.preferences
+    val fallbackHomeApp = state.homeLauncherStatus.otherHomeLaunchers.firstOrNull()
 
     fun handleOpenShortcut(shortcut: DesktopShortcut) {
         when (shortcut.kind) {
@@ -324,6 +406,8 @@ private fun Win11DesktopRoot(
                             )
                             DesktopWindowType.SETTINGS_PERSONALIZE -> PersonalizeWindowContent(
                                 preferences = prefs,
+                                homeLauncherStatus = state.homeLauncherStatus,
+                                githubUpdateState = state.githubUpdateState,
                                 onSetDarkTheme = { viewModel.setDarkTheme(it) },
                                 onSelectWallpaper = { viewModel.setWallpaper(it) },
                                 onPickCustomWallpaper = onPickCustomWallpaper,
@@ -334,7 +418,20 @@ private fun Win11DesktopRoot(
                                 onSetHideStatusBar = { viewModel.setHideSystemStatusBar(it) },
                                 onSetUserName = { viewModel.setUserName(it) },
                                 onRestoreDefaults = { viewModel.restoreDefaultShortcuts() },
-                                onOpenHomeSettings = { viewModel.openHomeLauncherSettings() }
+                                onRequestSafeHomeSwitch = {
+                                    if (prefs.safeHomeGuardEnabled) {
+                                        viewModel.requestSafeHomeSwitch()
+                                    } else {
+                                        onLaunchSystemHomeRole()
+                                    }
+                                },
+                                onSetSafeHomeGuard = { viewModel.setSafeHomeGuard(it) },
+                                onLaunchFallbackHome = { target -> viewModel.launchFallbackHomeLauncher(target) },
+                                onSaveAndCheckGitHubRepo = { viewModel.saveAndCheckGitHubRepo(it) },
+                                onSetAutoCheckUpdates = { viewModel.setAutoCheckUpdates(it) },
+                                onCheckGitHubUpdates = { viewModel.checkForGitHubUpdates() },
+                                onOpenGitHubRelease = { preferApk -> viewModel.openGitHubReleaseUrl(preferApk) },
+                                onStartInAppUpdate = { viewModel.startInAppUpdate() }
                             )
                             DesktopWindowType.RECYCLE_BIN_APPS -> AppManagerWindowContent(
                                 apps = state.installedApps,
@@ -403,9 +500,15 @@ private fun Win11DesktopRoot(
                             viewModel.closeAllPanels()
                         },
                         onHomeSettingsClick = {
-                            viewModel.closeAllPanels()
-                            viewModel.openHomeLauncherSettings()
-                        }
+                            if (prefs.safeHomeGuardEnabled) {
+                                viewModel.requestSafeHomeSwitch()
+                            } else {
+                                viewModel.closeAllPanels()
+                                onLaunchSystemHomeRole()
+                            }
+                        },
+                        fallbackHomeLabel = fallbackHomeApp?.label,
+                        onSwitchToSystemHome = { viewModel.launchFallbackHomeLauncher(fallbackHomeApp) }
                     )
                 }
 
@@ -426,7 +529,14 @@ private fun Win11DesktopRoot(
                         onToggleTheme = { viewModel.setDarkTheme(!prefs.isDarkTheme) },
                         onToggleFlashlight = { viewModel.toggleFlashlight() },
                         onToggleMute = { viewModel.toggleMute() },
-                        onHomeSettingsClick = { viewModel.openHomeLauncherSettings() },
+                        onHomeSettingsClick = {
+                            if (prefs.safeHomeGuardEnabled) {
+                                viewModel.requestSafeHomeSwitch()
+                            } else {
+                                viewModel.closeAllPanels()
+                                onLaunchSystemHomeRole()
+                            }
+                        },
                         onDisplaySettingsClick = { viewModel.openDisplaySettings() },
                         onOpenPersonalize = { viewModel.openWindow(DesktopWindowType.SETTINGS_PERSONALIZE) },
                         onVolumeChange = { viewModel.setMediaVolume(it) }
@@ -445,7 +555,9 @@ private fun Win11DesktopRoot(
                     Win11CalendarFlyout(
                         currentTimeMillis = state.currentTimeMillis,
                         telemetry = state.telemetry,
-                        onOpenThisPc = { viewModel.openWindow(DesktopWindowType.THIS_PC) }
+                        githubUpdateState = state.githubUpdateState,
+                        onOpenThisPc = { viewModel.openWindow(DesktopWindowType.THIS_PC) },
+                        onOpenUpdateSettings = { viewModel.openWindow(DesktopWindowType.SETTINGS_PERSONALIZE) }
                     )
                 }
 
@@ -554,11 +666,37 @@ private fun Win11DesktopRoot(
                 onRefreshDesktop = { viewModel.refreshInstalledApps() },
                 onOpenPersonalize = { viewModel.openWindow(DesktopWindowType.SETTINGS_PERSONALIZE) },
                 onRestoreDefaultShortcuts = { viewModel.restoreDefaultShortcuts() },
-                onOpenHomeSettings = { viewModel.openHomeLauncherSettings() }
+                onOpenHomeSettings = {
+                    if (prefs.safeHomeGuardEnabled) {
+                        viewModel.requestSafeHomeSwitch()
+                    } else {
+                        onLaunchSystemHomeRole()
+                    }
+                },
+                fallbackHomeLabel = fallbackHomeApp?.label,
+                onSwitchToSystemHome = { viewModel.launchFallbackHomeLauncher(fallbackHomeApp) }
             )
         }
 
-        // 5. Lock Screen Overlay
+        // 5. Safe Default Home Chooser Dialog
+        if (state.showSafeHomeDialog) {
+            SafeHomeChooserDialog(
+                status = state.homeLauncherStatus,
+                onDismiss = { viewModel.dismissSafeHomeDialog() },
+                onConfirmSystemHomeChooser = onLaunchSystemHomeRole,
+                onOpenFallbackLauncher = { target -> viewModel.launchFallbackHomeLauncher(target) }
+            )
+        }
+
+        // 6. Animated In-App APK Update & Auto-Cleanup Dialog
+        Win11InAppUpdateDialog(
+            updateState = state.githubUpdateState,
+            onRequestInstallPermission = onRequestUnknownSourcesPermission,
+            onRetryUpdate = { viewModel.startInAppUpdate() },
+            onDismiss = { viewModel.dismissInAppUpdateStage() }
+        )
+
+        // 7. Lock Screen Overlay
         AnimatedVisibility(
             visible = state.isLocked,
             enter = fadeIn(),

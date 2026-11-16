@@ -22,9 +22,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ExitToApp
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Home
@@ -33,21 +37,28 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,8 +75,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.example.R
 import com.example.model.DesktopIconSize
+import com.example.model.GitHubUpdateState
+import com.example.model.GitHubUpdateStatus
+import com.example.model.HomeLauncherStatus
 import com.example.model.InstalledApp
 import com.example.model.LauncherPreferences
 import com.example.model.SystemTelemetry
@@ -284,6 +299,8 @@ fun UserFilesWindowContent(
 @Composable
 fun PersonalizeWindowContent(
     preferences: LauncherPreferences,
+    homeLauncherStatus: HomeLauncherStatus,
+    githubUpdateState: GitHubUpdateState,
     onSetDarkTheme: (Boolean) -> Unit,
     onSelectWallpaper: (WallpaperOption) -> Unit,
     onPickCustomWallpaper: () -> Unit,
@@ -294,10 +311,18 @@ fun PersonalizeWindowContent(
     onSetHideStatusBar: (Boolean) -> Unit,
     onSetUserName: (String) -> Unit,
     onRestoreDefaults: () -> Unit,
-    onOpenHomeSettings: () -> Unit
+    onRequestSafeHomeSwitch: () -> Unit,
+    onSetSafeHomeGuard: (Boolean) -> Unit,
+    onLaunchFallbackHome: (InstalledApp?) -> Unit,
+    onSaveAndCheckGitHubRepo: (String) -> Unit,
+    onSetAutoCheckUpdates: (Boolean) -> Unit,
+    onCheckGitHubUpdates: () -> Unit,
+    onOpenGitHubRelease: (Boolean) -> Unit,
+    onStartInAppUpdate: () -> Unit
 ) {
     val winColors = LocalWin11Colors.current
     var nameDraft by remember(preferences.userName) { mutableStateOf(preferences.userName) }
+    var repoDraft by remember(preferences.githubRepoSlug) { mutableStateOf(preferences.githubRepoSlug) }
 
     Column(
         modifier = Modifier
@@ -306,37 +331,272 @@ fun PersonalizeWindowContent(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Default Home Action Card
-        Row(
+        // Default Home Launcher (Safe Mode) Card
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
-                .background(winColors.accentSoft.copy(alpha = 0.18f))
-                .border(1.dp, winColors.accent.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .background(winColors.accentSoft.copy(alpha = 0.14f))
+                .border(1.dp, winColors.accent.copy(alpha = 0.48f), RoundedCornerShape(10.dp))
+                .padding(12.dp)
+                .testTag("settings_home_launcher_card"),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "Use Win11 Launcher as Home",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = winColors.textPrimary
-                )
-                Text(
-                    "Open Android Default Home App settings",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = winColors.textSecondary
-                )
-            }
-            Button(
-                onClick = onOpenHomeSettings,
-                colors = ButtonDefaults.buttonColors(containerColor = winColors.accentSoft),
-                modifier = Modifier.testTag("settings_set_default_home")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(Icons.Rounded.Home, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Set Default")
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Security,
+                            contentDescription = null,
+                            tint = if (homeLauncherStatus.isDefaultHome) Color(0xFF4CD4A9) else winColors.accent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = if (homeLauncherStatus.isDefaultHome) {
+                                "Aktif sebagai Home Default"
+                            } else {
+                                "Gantikan Home Launcher (Aman)"
+                            },
+                            style = MaterialTheme.typography.titleSmall,
+                            color = winColors.textPrimary
+                        )
+                    }
+                    Text(
+                        text = if (homeLauncherStatus.isDefaultHome) {
+                            "Win11 Launcher aktif sebagai beranda utama. Anda tetap bisa kembali ke launcher bawaan kapan saja."
+                        } else {
+                            "Home aktif saat ini: ${homeLauncherStatus.currentDefaultHomeLabel}"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = winColors.textSecondary
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onRequestSafeHomeSwitch,
+                    colors = ButtonDefaults.buttonColors(containerColor = winColors.accentSoft),
+                    modifier = Modifier.weight(1f).testTag("settings_set_default_home")
+                ) {
+                    Icon(Icons.Rounded.Home, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (homeLauncherStatus.isDefaultHome) "Ubah Home" else "Jadikan Default")
+                }
+
+                val stockLauncher = homeLauncherStatus.otherHomeLaunchers.firstOrNull()
+                if (stockLauncher != null) {
+                    OutlinedButton(
+                        onClick = { onLaunchFallbackHome(stockLauncher) },
+                        modifier = Modifier.weight(1f).testTag("settings_open_stock_home")
+                    ) {
+                        Icon(Icons.AutoMirrored.Rounded.ExitToApp, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Launcher Asli",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+
+            SettingSwitchRow(
+                title = "Mode Aman (Konfirmasi & Tombol Kembali ke Launcher Asli)",
+                checked = preferences.safeHomeGuardEnabled,
+                onCheckedChange = onSetSafeHomeGuard
+            )
+        }
+
+        // Windows Update (GitHub Releases Detector) Card
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(winColors.cardSurface)
+                .border(1.dp, winColors.subtleBorder, RoundedCornerShape(10.dp))
+                .padding(12.dp)
+                .testTag("settings_github_update_card"),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.SystemUpdate,
+                        contentDescription = null,
+                        tint = if (githubUpdateState.status == GitHubUpdateStatus.UPDATE_AVAILABLE) {
+                            Color(0xFF4CD4A9)
+                        } else {
+                            winColors.accent
+                        },
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "Windows Update (GitHub)",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = winColors.textPrimary
+                        )
+                        Text(
+                            text = "Versi terpasang: v${githubUpdateState.currentVersion}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = winColors.textSecondary
+                        )
+                    }
+                }
+                if (githubUpdateState.status == GitHubUpdateStatus.CHECKING) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = winColors.accent
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = repoDraft,
+                    onValueChange = { repoDraft = it },
+                    label = { Text("Repo GitHub (owner/repo)") },
+                    placeholder = { Text("contoh: user/win11-launcher") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f).testTag("settings_github_repo_input")
+                )
+                Button(
+                    onClick = {
+                        if (repoDraft.isNotBlank()) onSaveAndCheckGitHubRepo(repoDraft)
+                        else onCheckGitHubUpdates()
+                    },
+                    enabled = githubUpdateState.status != GitHubUpdateStatus.CHECKING,
+                    colors = ButtonDefaults.buttonColors(containerColor = winColors.accentSoft),
+                    modifier = Modifier.testTag("settings_check_github_update")
+                ) {
+                    Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Cek")
+                }
+            }
+
+            SettingSwitchRow(
+                title = "Cek update GitHub otomatis saat dibuka",
+                checked = preferences.autoCheckUpdates,
+                onCheckedChange = onSetAutoCheckUpdates
+            )
+
+            when (githubUpdateState.status) {
+                GitHubUpdateStatus.UPDATE_AVAILABLE -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF10B981).copy(alpha = 0.14f))
+                            .border(1.dp, Color(0xFF10B981).copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "Update baru tersedia: ${githubUpdateState.latestTag ?: ""}",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color(0xFF4CD4A9)
+                        )
+                        githubUpdateState.releaseTitle?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = winColors.textPrimary)
+                        }
+                        githubUpdateState.releaseNotes?.let { notes ->
+                            Text(
+                                text = notes,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = winColors.textSecondary,
+                                maxLines = 4,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (githubUpdateState.apkSizeBytes > 0L) {
+                            Text(
+                                text = "Paket APK tersedia (${formatExplorerBytes(githubUpdateState.apkSizeBytes, false)}) • Instalasi langsung di aplikasi",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = winColors.textSecondary
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (githubUpdateState.apkAssetUrl != null) {
+                                Button(
+                                    onClick = onStartInAppUpdate,
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                                    modifier = Modifier.testTag("settings_in_app_update_button")
+                                ) {
+                                    Icon(Icons.Rounded.CloudDownload, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text("Update di App")
+                                }
+                                OutlinedButton(
+                                    onClick = { onOpenGitHubRelease(false) },
+                                    modifier = Modifier.testTag("settings_open_github_release")
+                                ) {
+                                    Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text("Release")
+                                }
+                            } else {
+                                Button(
+                                    onClick = { onOpenGitHubRelease(false) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = winColors.accentSoft),
+                                    modifier = Modifier.testTag("settings_open_github_release")
+                                ) {
+                                    Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text("Buka Release")
+                                }
+                            }
+                        }
+                    }
+                }
+                GitHubUpdateStatus.UP_TO_DATE -> {
+                    Text(
+                        text = "✓ Sudah versi terbaru (GitHub: ${githubUpdateState.latestTag ?: githubUpdateState.currentVersion})",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF4CD4A9)
+                    )
+                }
+                GitHubUpdateStatus.NOT_CONFIGURED, GitHubUpdateStatus.ERROR -> {
+                    githubUpdateState.errorMessage?.let { err ->
+                        Text(
+                            text = err,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFFF8A80)
+                        )
+                    }
+                }
+                GitHubUpdateStatus.CHECKING -> {
+                    Text(
+                        text = "Memeriksa rilis terbaru di GitHub...",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = winColors.textSecondary
+                    )
+                }
+                GitHubUpdateStatus.IDLE -> Unit
             }
         }
 
@@ -622,6 +882,123 @@ fun AppManagerWindowContent(
                             tint = winColors.textSecondary,
                             modifier = Modifier.size(18.dp)
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SafeHomeChooserDialog(
+    status: HomeLauncherStatus,
+    onDismiss: () -> Unit,
+    onConfirmSystemHomeChooser: () -> Unit,
+    onOpenFallbackLauncher: (InstalledApp) -> Unit
+) {
+    val winColors = LocalWin11Colors.current
+    val shape = RoundedCornerShape(14.dp)
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = shape,
+            color = winColors.micaSurface,
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, winColors.border, shape)
+                .testTag("safe_home_dialog")
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Security,
+                            contentDescription = null,
+                            tint = winColors.accent,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Text(
+                            text = "Ganti Home Launcher (Aman)",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = winColors.textPrimary
+                        )
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(30.dp)) {
+                        Icon(Icons.Rounded.Close, contentDescription = "Close", tint = winColors.textPrimary)
+                    }
+                }
+
+                HorizontalDivider(color = winColors.subtleBorder)
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(winColors.cardSurface)
+                        .border(1.dp, winColors.subtleBorder, RoundedCornerShape(10.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "Status Saat Ini: ${status.currentDefaultHomeLabel}",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = winColors.textPrimary
+                    )
+                    Text(
+                        text = "• Launcher bawaan HP Anda tetap aman dan tidak dihapus.\n• Anda bisa kembali kapan saja lewat Start → Power → Default Home App atau membuka launcher asli langsung dari sini.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = winColors.textSecondary
+                    )
+                }
+
+                Button(
+                    onClick = onConfirmSystemHomeChooser,
+                    colors = ButtonDefaults.buttonColors(containerColor = winColors.accentSoft),
+                    modifier = Modifier.fillMaxWidth().testTag("safe_home_confirm_button")
+                ) {
+                    Icon(Icons.Rounded.Home, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (status.isDefaultHome) "Ubah Pengaturan Home Sistem" else "Pilih Win11 sebagai Home Default")
+                }
+
+                if (status.otherHomeLaunchers.isNotEmpty()) {
+                    Text(
+                        text = "Atau beralih cepat ke launcher lain:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = winColors.textSecondary
+                    )
+                    status.otherHomeLaunchers.take(2).forEach { homeApp ->
+                        OutlinedButton(
+                            onClick = { onOpenFallbackLauncher(homeApp) },
+                            modifier = Modifier.fillMaxWidth().testTag("safe_home_fallback_${homeApp.packageName}")
+                        ) {
+                            Icon(Icons.AutoMirrored.Rounded.ExitToApp, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Buka ${homeApp.label}")
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.testTag("safe_home_preview_button")
+                    ) {
+                        Text("Tetap Mode Preview", color = winColors.textSecondary)
                     }
                 }
             }

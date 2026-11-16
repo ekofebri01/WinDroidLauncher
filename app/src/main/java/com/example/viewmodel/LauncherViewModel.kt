@@ -1,8 +1,12 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.BuildConfig
+import com.example.data.ApkInstallerManager
+import com.example.data.GitHubUpdateRepository
 import com.example.data.LauncherPreferencesRepository
 import com.example.data.SystemRepository
 import com.example.model.ActivePanel
@@ -11,6 +15,10 @@ import com.example.model.DesktopIconSize
 import com.example.model.DesktopShortcut
 import com.example.model.DesktopWindowState
 import com.example.model.DesktopWindowType
+import com.example.model.GitHubUpdateState
+import com.example.model.GitHubUpdateStatus
+import com.example.model.HomeLauncherStatus
+import com.example.model.InAppUpdateStage
 import com.example.model.InstalledApp
 import com.example.model.LauncherPreferences
 import com.example.model.ShortcutKind
@@ -22,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -47,6 +56,9 @@ data class LauncherUiState(
     val showPowerMenu: Boolean = false,
     val isLocked: Boolean = false,
     val contextMenu: ContextMenuRequest? = null,
+    val showSafeHomeDialog: Boolean = false,
+    val homeLauncherStatus: HomeLauncherStatus = HomeLauncherStatus(),
+    val githubUpdateState: GitHubUpdateState = GitHubUpdateState(currentVersion = BuildConfig.VERSION_NAME),
     val toastMessage: String? = null
 )
 
@@ -54,10 +66,18 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     private val prefsRepo = LauncherPreferencesRepository(application)
     private val systemRepo = SystemRepository(application)
+    private val githubUpdateRepo = GitHubUpdateRepository()
+    private val apkInstaller = ApkInstallerManager(application)
 
     private val installedAppsFlow = MutableStateFlow<List<InstalledApp>>(emptyList())
     private val isLoadingAppsFlow = MutableStateFlow(true)
     private val telemetryFlow = MutableStateFlow(systemRepo.readCurrentTelemetry())
+    private val homeStatusFlow = MutableStateFlow(systemRepo.readHomeLauncherStatus())
+    private val githubUpdateFlow = MutableStateFlow(
+        GitHubUpdateState(currentVersion = BuildConfig.VERSION_NAME)
+    )
+    private val _installPromptIntent = MutableStateFlow<Intent?>(null)
+    val installPromptIntent: StateFlow<Intent?> = _installPromptIntent
 
     private val uiInteractionFlow = MutableStateFlow(InteractionState())
 
@@ -71,6 +91,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val showPowerMenu: Boolean = false,
         val isLocked: Boolean = false,
         val contextMenu: ContextMenuRequest? = null,
+        val showSafeHomeDialog: Boolean = false,
         val toastMessage: String? = null
     )
 
@@ -89,6 +110,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         isLoadingAppsFlow,
         telemetryFlow,
         clockFlow,
+        homeStatusFlow,
+        githubUpdateFlow,
         uiInteractionFlow
     ) { values ->
         val prefs = values[0] as LauncherPreferences
@@ -97,7 +120,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val isLoading = values[2] as Boolean
         val telemetry = values[3] as SystemTelemetry
         val timeMillis = values[4] as Long
-        val interaction = values[5] as InteractionState
+        val homeStatus = values[5] as HomeLauncherStatus
+        val updateState = values[6] as GitHubUpdateState
+        val interaction = values[7] as InteractionState
 
         val appByPkg = apps.associateBy { it.packageName }
 
@@ -133,15 +158,72 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             showPowerMenu = interaction.showPowerMenu,
             isLocked = interaction.isLocked,
             contextMenu = interaction.contextMenu,
+            showSafeHomeDialog = interaction.showSafeHomeDialog,
+            homeLauncherStatus = homeStatus,
+            githubUpdateState = updateState,
             toastMessage = interaction.toastMessage
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LauncherUiState())
 
     init {
         refreshInstalledApps()
+        refreshHomeLauncherStatus()
+        apkInstaller.registerListeners(
+            onProgress = { progress ->
+                githubUpdateFlow.update { st ->
+                    if (st.inAppStage == InAppUpdateStage.INSTALLING) {
+                        st.copy(installProgress = progress.coerceIn(0f, 1f))
+                    } else st
+                }
+            },
+            onUserAction = { intent ->
+                _installPromptIntent.value = intent
+            },
+            onSuccess = {
+                viewModelScope.launch {
+                    completeInstallAndCleanup()
+                }
+            },
+            onFailure = { errorMsg ->
+                val apkPath = githubUpdateFlow.value.downloadedApkPath
+                githubUpdateRepo.cleanupUpdateFiles(getApplication(), apkPath)
+                viewModelScope.launch { prefsRepo.setPendingUpdateCleanupPath(null) }
+                githubUpdateFlow.update {
+                    it.copy(
+                        inAppStage = InAppUpdateStage.FAILED,
+                        errorMessage = errorMsg,
+                        downloadedApkPath = null
+                    )
+                }
+            }
+        )
+        viewModelScope.launch {
+            val pendingPath = prefsRepo.pendingUpdateCleanupFlow.first()
+            if (!pendingPath.isNullOrBlank()) {
+                githubUpdateRepo.cleanupUpdateFiles(getApplication(), pendingPath)
+                prefsRepo.setPendingUpdateCleanupPath(null)
+                githubUpdateFlow.update {
+                    it.copy(
+                        status = GitHubUpdateStatus.UP_TO_DATE,
+                        inAppStage = InAppUpdateStage.INSTALLED_SUCCESS,
+                        installProgress = 1f,
+                        cleanedUpAfterInstall = true,
+                        downloadedApkPath = null
+                    )
+                }
+            } else {
+                // Ensure no stray update files remain in cache
+                githubUpdateRepo.cleanupUpdateFiles(getApplication())
+            }
+            val initialPrefs = prefsRepo.preferencesFlow.first()
+            if (initialPrefs.autoCheckUpdates && initialPrefs.githubRepoSlug.isNotBlank()) {
+                checkForGitHubUpdates(initialPrefs.githubRepoSlug, silent = true)
+            }
+        }
         viewModelScope.launch {
             systemRepo.observePackageChanges().collect {
                 refreshInstalledApps()
+                refreshHomeLauncherStatus()
             }
         }
         viewModelScope.launch {
@@ -149,6 +231,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 telemetryFlow.value = snapshot
             }
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        apkInstaller.dispose()
     }
 
     fun refreshInstalledApps() {
@@ -518,6 +605,266 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun openAppInfo(packageName: String) {
         dismissContextMenu()
         systemRepo.openAppInfo(packageName)
+    }
+
+    fun refreshHomeLauncherStatus() {
+        homeStatusFlow.value = systemRepo.readHomeLauncherStatus()
+    }
+
+    fun requestSafeHomeSwitch() {
+        refreshHomeLauncherStatus()
+        uiInteractionFlow.update {
+            it.copy(
+                activePanel = ActivePanel.NONE,
+                showPowerMenu = false,
+                contextMenu = null,
+                showSafeHomeDialog = true
+            )
+        }
+    }
+
+    fun dismissSafeHomeDialog() {
+        uiInteractionFlow.update { it.copy(showSafeHomeDialog = false) }
+    }
+
+    fun setSafeHomeGuard(enabled: Boolean) {
+        viewModelScope.launch { prefsRepo.setSafeHomeGuard(enabled) }
+    }
+
+    fun createHomeRoleRequestIntent(): Intent? = systemRepo.createHomeRoleRequestIntent()
+
+    fun launchFallbackHomeLauncher(target: InstalledApp? = null) {
+        val candidate = target ?: homeStatusFlow.value.otherHomeLaunchers.firstOrNull()
+        dismissSafeHomeDialog()
+        closeAllPanels()
+        if (candidate != null && systemRepo.launchFallbackHomeLauncher(candidate)) {
+            showToast("Beralih ke ${candidate.label}")
+        } else {
+            systemRepo.openHomeLauncherSettings()
+        }
+    }
+
+    fun handleHomeIntent() {
+        uiInteractionFlow.update {
+            it.copy(
+                activePanel = ActivePanel.NONE,
+                showPowerMenu = false,
+                contextMenu = null,
+                showSafeHomeDialog = false,
+                isLocked = false
+            )
+        }
+        refreshHomeLauncherStatus()
+    }
+
+    fun saveAndCheckGitHubRepo(rawRepo: String) {
+        val normalized = GitHubUpdateRepository.normalizeGitHubRepoSlug(rawRepo)
+        if (normalized == null) {
+            githubUpdateFlow.value = GitHubUpdateState(
+                status = GitHubUpdateStatus.NOT_CONFIGURED,
+                currentVersion = BuildConfig.VERSION_NAME,
+                errorMessage = "Format repo tidak valid. Gunakan format owner/repo (contoh: torvalds/linux)."
+            )
+            return
+        }
+        viewModelScope.launch {
+            prefsRepo.setGitHubRepoSlug(normalized)
+            checkForGitHubUpdates(normalized)
+        }
+    }
+
+    fun setAutoCheckUpdates(enabled: Boolean) {
+        viewModelScope.launch { prefsRepo.setAutoCheckUpdates(enabled) }
+    }
+
+    fun checkForGitHubUpdates(repoOverride: String? = null, silent: Boolean = false) {
+        val targetRepo = (repoOverride ?: uiState.value.preferences.githubRepoSlug).trim()
+        viewModelScope.launch {
+            githubUpdateFlow.update {
+                it.copy(
+                    status = GitHubUpdateStatus.CHECKING,
+                    currentVersion = BuildConfig.VERSION_NAME,
+                    errorMessage = null
+                )
+            }
+            val result = githubUpdateRepo.checkLatestUpdate(targetRepo)
+            githubUpdateFlow.value = result
+            if (!silent) {
+                when (result.status) {
+                    GitHubUpdateStatus.UPDATE_AVAILABLE ->
+                        showToast("Update GitHub tersedia: ${result.latestTag}")
+                    GitHubUpdateStatus.UP_TO_DATE ->
+                        showToast("Aplikasi sudah versi terbaru (${result.currentVersion})")
+                    GitHubUpdateStatus.NOT_CONFIGURED ->
+                        showToast("Isi repositori GitHub (owner/repo) terlebih dahulu")
+                    GitHubUpdateStatus.ERROR ->
+                        showToast(result.errorMessage ?: "Gagal cek update GitHub")
+                    else -> Unit
+                }
+            }
+        }
+    }
+
+    fun openGitHubReleaseUrl(preferApkAsset: Boolean = false) {
+        val st = githubUpdateFlow.value
+        val url = (if (preferApkAsset) st.apkAssetUrl else null) ?: st.releaseUrl
+        if (url != null) {
+            if (!systemRepo.openExternalUrl(url)) {
+                showToast("Tidak ada browser untuk membuka tautan rilis")
+            }
+        }
+    }
+
+    fun startInAppUpdate() {
+        val current = githubUpdateFlow.value
+        val apkUrl = current.apkAssetUrl
+        if (apkUrl.isNullOrBlank()) {
+            showToast("Rilis ini belum memiliki file .apk, membuka halaman GitHub")
+            openGitHubReleaseUrl(preferApkAsset = false)
+            return
+        }
+        if (!apkInstaller.canRequestPackageInstalls()) {
+            githubUpdateFlow.update {
+                it.copy(
+                    inAppStage = InAppUpdateStage.PERMISSION_REQUIRED,
+                    errorMessage = null
+                )
+            }
+            return
+        }
+        downloadAndInstallUpdate(apkUrl, current.latestTag ?: "latest")
+    }
+
+    fun openUnknownSourcesPermission(): Intent = apkInstaller.createUnknownSourcesIntent()
+
+    fun onResumeCheckInstallPermission() {
+        if (githubUpdateFlow.value.inAppStage == InAppUpdateStage.PERMISSION_REQUIRED &&
+            apkInstaller.canRequestPackageInstalls()
+        ) {
+            startInAppUpdate()
+        }
+    }
+
+    private fun downloadAndInstallUpdate(apkUrl: String, versionTag: String) {
+        viewModelScope.launch {
+            githubUpdateFlow.update {
+                it.copy(
+                    inAppStage = InAppUpdateStage.DOWNLOADING,
+                    downloadProgress = 0f,
+                    downloadedBytes = 0L,
+                    totalBytes = it.apkSizeBytes,
+                    installProgress = 0f,
+                    errorMessage = null,
+                    cleanedUpAfterInstall = false
+                )
+            }
+            val downloadResult = runCatching {
+                githubUpdateRepo.downloadApk(
+                    context = getApplication(),
+                    apkUrl = apkUrl,
+                    versionTag = versionTag
+                ) { downloaded, total ->
+                    val effectiveTotal = if (total > 0L) total else githubUpdateFlow.value.apkSizeBytes
+                    val fraction = if (effectiveTotal > 0L) {
+                        (downloaded.toFloat() / effectiveTotal.toFloat()).coerceIn(0f, 1f)
+                    } else 0f
+                    githubUpdateFlow.update { st ->
+                        st.copy(
+                            downloadedBytes = downloaded,
+                            totalBytes = effectiveTotal,
+                            downloadProgress = fraction
+                        )
+                    }
+                }
+            }
+
+            val apkFile = downloadResult.getOrNull()
+            if (apkFile == null) {
+                val err = downloadResult.exceptionOrNull()?.message ?: "Gagal mengunduh file update"
+                githubUpdateRepo.cleanupUpdateFiles(getApplication())
+                githubUpdateFlow.update {
+                    it.copy(
+                        inAppStage = InAppUpdateStage.FAILED,
+                        errorMessage = err
+                    )
+                }
+                return@launch
+            }
+
+            githubUpdateFlow.update {
+                it.copy(
+                    inAppStage = InAppUpdateStage.VERIFYING,
+                    downloadProgress = 1f,
+                    downloadedApkPath = apkFile.absolutePath
+                )
+            }
+            prefsRepo.setPendingUpdateCleanupPath(apkFile.absolutePath)
+            delay(450L)
+
+            githubUpdateFlow.update {
+                it.copy(
+                    inAppStage = InAppUpdateStage.INSTALLING,
+                    installProgress = 0.1f
+                )
+            }
+            val installRes = apkInstaller.installApk(apkFile)
+            if (installRes.isFailure) {
+                val err = installRes.exceptionOrNull()?.message ?: "Gagal memulai proses instalasi"
+                githubUpdateRepo.cleanupUpdateFiles(getApplication(), apkFile.absolutePath)
+                prefsRepo.setPendingUpdateCleanupPath(null)
+                githubUpdateFlow.update {
+                    it.copy(
+                        inAppStage = InAppUpdateStage.FAILED,
+                        errorMessage = err,
+                        downloadedApkPath = null
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun completeInstallAndCleanup() {
+        val apkPath = githubUpdateFlow.value.downloadedApkPath
+        githubUpdateFlow.update {
+            it.copy(
+                inAppStage = InAppUpdateStage.CLEANING_UP,
+                installProgress = 0.95f
+            )
+        }
+        delay(350L)
+        githubUpdateRepo.cleanupUpdateFiles(getApplication(), apkPath)
+        prefsRepo.setPendingUpdateCleanupPath(null)
+        githubUpdateFlow.update {
+            it.copy(
+                status = GitHubUpdateStatus.UP_TO_DATE,
+                inAppStage = InAppUpdateStage.INSTALLED_SUCCESS,
+                installProgress = 1f,
+                downloadedApkPath = null,
+                cleanedUpAfterInstall = true
+            )
+        }
+    }
+
+    fun clearInstallPromptIntent() {
+        _installPromptIntent.value = null
+    }
+
+    fun dismissInAppUpdateStage() {
+        val stage = githubUpdateFlow.value.inAppStage
+        if (stage == InAppUpdateStage.FAILED ||
+            stage == InAppUpdateStage.INSTALLED_SUCCESS ||
+            stage == InAppUpdateStage.PERMISSION_REQUIRED
+        ) {
+            githubUpdateRepo.cleanupUpdateFiles(getApplication(), githubUpdateFlow.value.downloadedApkPath)
+            viewModelScope.launch { prefsRepo.setPendingUpdateCleanupPath(null) }
+            githubUpdateFlow.update {
+                it.copy(
+                    inAppStage = InAppUpdateStage.NONE,
+                    downloadedApkPath = null,
+                    errorMessage = if (stage == InAppUpdateStage.FAILED) it.errorMessage else null
+                )
+            }
+        }
     }
 
     fun openHomeLauncherSettings() = systemRepo.openHomeLauncherSettings()

@@ -110,7 +110,60 @@ data class LauncherPreferences(
     val desktopAppPackages: List<String> = emptyList(),
     val recentAppPackages: List<String> = emptyList(),
     val hiddenDefaultShortcuts: Set<String> = emptySet(),
-    val sortAlphabetically: Boolean = false
+    val sortAlphabetically: Boolean = false,
+    val safeHomeGuardEnabled: Boolean = true,
+    val githubRepoSlug: String = "",
+    val autoCheckUpdates: Boolean = true
+)
+
+@Immutable
+data class HomeLauncherStatus(
+    val isDefaultHome: Boolean = false,
+    val currentDefaultHomeLabel: String = "System Launcher",
+    val currentDefaultHomePackage: String? = null,
+    val otherHomeLaunchers: List<InstalledApp> = emptyList()
+)
+
+enum class GitHubUpdateStatus {
+    IDLE,
+    CHECKING,
+    UPDATE_AVAILABLE,
+    UP_TO_DATE,
+    NOT_CONFIGURED,
+    ERROR
+}
+
+enum class InAppUpdateStage {
+    NONE,
+    PERMISSION_REQUIRED,
+    DOWNLOADING,
+    VERIFYING,
+    INSTALLING,
+    CLEANING_UP,
+    INSTALLED_SUCCESS,
+    FAILED
+}
+
+@Immutable
+data class GitHubUpdateState(
+    val status: GitHubUpdateStatus = GitHubUpdateStatus.IDLE,
+    val currentVersion: String = "1.0",
+    val latestTag: String? = null,
+    val releaseTitle: String? = null,
+    val releaseNotes: String? = null,
+    val releaseUrl: String? = null,
+    val apkAssetUrl: String? = null,
+    val apkSizeBytes: Long = 0L,
+    val publishedAt: String? = null,
+    val errorMessage: String? = null,
+    val lastCheckedMillis: Long? = null,
+    val inAppStage: InAppUpdateStage = InAppUpdateStage.NONE,
+    val downloadProgress: Float = 0f,
+    val downloadedBytes: Long = 0L,
+    val totalBytes: Long = 0L,
+    val installProgress: Float = 0f,
+    val downloadedApkPath: String? = null,
+    val cleanedUpAfterInstall: Boolean = false
 )
 
 @Immutable

@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ExitToApp
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Apps
@@ -92,6 +93,8 @@ fun Win11StartMenu(
     onLockClick: () -> Unit,
     onRefreshClick: () -> Unit,
     onHomeSettingsClick: () -> Unit,
+    fallbackHomeLabel: String? = null,
+    onSwitchToSystemHome: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val winColors = LocalWin11Colors.current
@@ -354,12 +357,21 @@ fun Win11StartMenu(
                                 onClick = onRefreshClick
                             )
                             DropdownMenuItem(
-                                text = { Text("Default Home App", color = winColors.textPrimary) },
+                                text = { Text("Default Home App (Aman)", color = winColors.textPrimary) },
                                 leadingIcon = {
                                     Icon(Icons.Rounded.Apps, contentDescription = null, tint = winColors.textPrimary)
                                 },
                                 onClick = onHomeSettingsClick
                             )
+                            if (!fallbackHomeLabel.isNullOrBlank()) {
+                                DropdownMenuItem(
+                                    text = { Text("Kembali ke $fallbackHomeLabel", color = winColors.textPrimary) },
+                                    leadingIcon = {
+                                        Icon(Icons.AutoMirrored.Rounded.ExitToApp, contentDescription = null, tint = winColors.accent)
+                                    },
+                                    onClick = onSwitchToSystemHome
+                                )
+                            }
                         }
                     }
                 }

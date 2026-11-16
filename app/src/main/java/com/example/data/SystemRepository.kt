@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.app.ActivityManager
+import android.app.role.RoleManager
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -27,6 +28,7 @@ import android.provider.Settings
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.content.ContextCompat
+import com.example.model.HomeLauncherStatus
 import com.example.model.InstalledApp
 import com.example.model.SystemTelemetry
 import kotlinx.coroutines.Dispatchers
@@ -283,8 +285,12 @@ class SystemRepository(private val context: Context) {
     }
 
     fun openDefaultBrowser(): Boolean {
+        return openExternalUrl("https://www.google.com")
+    }
+
+    fun openExternalUrl(url: String): Boolean {
         return runCatching {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com")).apply {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
@@ -302,6 +308,112 @@ class SystemRepository(private val context: Context) {
         }
     }
 
+    fun readHomeLauncherStatus(): HomeLauncherStatus {
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+        }
+        val selfPackage = context.packageName
+        val roleHeld = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            runCatching {
+                val rm = context.getSystemService(RoleManager::class.java)
+                rm != null && rm.isRoleAvailable(RoleManager.ROLE_HOME) && rm.isRoleHeld(RoleManager.ROLE_HOME)
+            }.getOrDefault(false)
+        } else {
+            false
+        }
+
+        val resolved = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.resolveActivity(
+                    homeIntent,
+                    PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong())
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            }
+        }.getOrNull()
+
+        val resolvedPkg = resolved?.activityInfo?.packageName
+        val isDefault = roleHeld || resolvedPkg == selfPackage
+        val resolvedLabel = when {
+            isDefault -> "Win11 Launcher"
+            resolvedPkg == "android" || resolvedPkg == "com.android.settings" -> "Belum dipilih (System Picker)"
+            resolved != null -> resolved.loadLabel(packageManager)?.toString()?.trim().orEmpty()
+                .ifEmpty { resolvedPkg ?: "System Launcher" }
+            else -> "System Launcher"
+        }
+
+        val allHomes = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.queryIntentActivities(
+                    homeIntent,
+                    PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong())
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.queryIntentActivities(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            }
+        }.getOrDefault(emptyList())
+
+        val otherHomes = allHomes
+            .asSequence()
+            .filter {
+                val pkg = it.activityInfo.packageName
+                pkg != selfPackage && pkg != "android" && pkg != "com.android.settings"
+            }
+            .distinctBy { it.activityInfo.packageName }
+            .map { info ->
+                val pkg = info.activityInfo.packageName
+                val act = info.activityInfo.name
+                val label = info.loadLabel(packageManager)?.toString()?.trim().orEmpty().ifEmpty { pkg }
+                val icon = runCatching { drawableToImageBitmap(info.loadIcon(packageManager)) }.getOrNull()
+                val isSys = (info.activityInfo.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                InstalledApp(
+                    packageName = pkg,
+                    activityName = act,
+                    label = label,
+                    icon = icon,
+                    isSystemApp = isSys
+                )
+            }
+            .sortedByDescending { it.isSystemApp }
+            .toList()
+
+        return HomeLauncherStatus(
+            isDefaultHome = isDefault,
+            currentDefaultHomeLabel = resolvedLabel,
+            currentDefaultHomePackage = resolvedPkg,
+            otherHomeLaunchers = otherHomes
+        )
+    }
+
+    fun createHomeRoleRequestIntent(): Intent? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return runCatching {
+                val rm = context.getSystemService(RoleManager::class.java)
+                if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_HOME) && !rm.isRoleHeld(RoleManager.ROLE_HOME)) {
+                    rm.createRequestRoleIntent(RoleManager.ROLE_HOME)
+                } else {
+                    null
+                }
+            }.getOrNull()
+        }
+        return null
+    }
+
+    fun launchFallbackHomeLauncher(target: InstalledApp): Boolean {
+        return runCatching {
+            val intent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                component = ComponentName(target.packageName, target.activityName)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+            }
+            context.startActivity(intent)
+            true
+        }.getOrDefault(false)
+    }
+
     fun openHomeLauncherSettings() {
         runCatching {
             val intent = Intent(Settings.ACTION_HOME_SETTINGS).apply {
@@ -309,7 +421,14 @@ class SystemRepository(private val context: Context) {
             }
             context.startActivity(intent)
         }.onFailure {
-            openSystemSettings()
+            runCatching {
+                val fallback = Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(fallback)
+            }.onFailure {
+                openSystemSettings()
+            }
         }
     }
 

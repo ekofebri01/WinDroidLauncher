@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ExitToApp
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
@@ -73,6 +74,8 @@ import com.example.model.ContextMenuRequest
 import com.example.model.DesktopIconSize
 import com.example.model.DesktopShortcut
 import com.example.model.DesktopWindowState
+import com.example.model.GitHubUpdateState
+import com.example.model.GitHubUpdateStatus
 import com.example.model.DesktopWindowType
 import com.example.model.InstalledApp
 import com.example.model.LauncherPreferences
@@ -305,7 +308,9 @@ private fun QuickSettingTile(
 fun Win11CalendarFlyout(
     currentTimeMillis: Long,
     telemetry: SystemTelemetry,
+    githubUpdateState: GitHubUpdateState = GitHubUpdateState(),
     onOpenThisPc: () -> Unit,
+    onOpenUpdateSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val winColors = LocalWin11Colors.current
@@ -347,6 +352,31 @@ fun Win11CalendarFlyout(
         color = winColors.micaSurface
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (githubUpdateState.status == GitHubUpdateStatus.UPDATE_AVAILABLE) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF10B981).copy(alpha = 0.16f))
+                        .border(1.dp, Color(0xFF10B981).copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                        .clickable(onClick = onOpenUpdateSettings)
+                        .padding(12.dp)
+                        .testTag("flyout_github_update_notice"),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = "GitHub Update Available • ${githubUpdateState.latestTag ?: ""}",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFF4CD4A9)
+                    )
+                    Text(
+                        text = "Tap to view release notes & download",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = winColors.textPrimary
+                    )
+                }
+            }
+
             // System Notification Card
             Column(
                 modifier = Modifier
@@ -821,7 +851,9 @@ fun Win11ContextMenuDialog(
     onRefreshDesktop: () -> Unit,
     onOpenPersonalize: () -> Unit,
     onRestoreDefaultShortcuts: () -> Unit,
-    onOpenHomeSettings: () -> Unit
+    onOpenHomeSettings: () -> Unit,
+    fallbackHomeLabel: String? = null,
+    onSwitchToSystemHome: () -> Unit = {}
 ) {
     val winColors = LocalWin11Colors.current
     val shape = RoundedCornerShape(12.dp)
@@ -884,12 +916,22 @@ fun Win11ContextMenuDialog(
                     )
                     ContextMenuRow(
                         icon = Icons.Rounded.Home,
-                        label = "Set as Default Launcher",
+                        label = "Set as Default Launcher (Aman)",
                         onClick = {
                             onDismiss()
                             onOpenHomeSettings()
                         }
                     )
+                    if (!fallbackHomeLabel.isNullOrBlank()) {
+                        ContextMenuRow(
+                            icon = Icons.AutoMirrored.Rounded.ExitToApp,
+                            label = "Kembali ke $fallbackHomeLabel",
+                            onClick = {
+                                onDismiss()
+                                onSwitchToSystemHome()
+                            }
+                        )
+                    }
                 } else {
                     val app = request.app
                     val shortcut = request.shortcut
