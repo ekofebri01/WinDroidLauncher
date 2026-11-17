@@ -257,4 +257,44 @@ class ExampleRobolectricTest {
         assertTrue(cleaned)
         assertFalse(dummyApk.exists())
     }
+
+    @Test
+    fun `taskbar panel selector dialog lets user toggle panels independently`() {
+        composeRule.waitForIdle()
+
+        // Open Personalize -> click "Pilih & Atur Panel Taskbar Sendiri..."
+        composeRule.onNodeWithTag("desktop_shortcut_sys_personalize").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("settings_open_panel_selector").performScrollTo().performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("taskbar_panel_selector_dialog").assertIsDisplayed()
+
+        // Toggle Task View off and verify taskbar hides Task View
+        composeRule.onNodeWithTag("selector_toggle_task_view").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("taskbar_task_view_button"))
+                .fetchSemanticsNodes().isEmpty()
+        }
+
+        // Toggle Show Desktop off and verify taskbar hides Show Desktop sliver
+        composeRule.onNodeWithTag("selector_toggle_show_desktop").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("tray_show_desktop_button"))
+                .fetchSemanticsNodes().isEmpty()
+        }
+
+        // Reset defaults inside selector dialog and close
+        composeRule.onNodeWithTag("selector_reset_button").performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("taskbar_task_view_button"))
+                .fetchSemanticsNodes().isNotEmpty() &&
+                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("tray_show_desktop_button"))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("selector_close_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("taskbar_panel_selector_dialog").assertDoesNotExist()
+    }
 }

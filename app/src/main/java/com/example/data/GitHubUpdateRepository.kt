@@ -58,82 +58,93 @@ class GitHubUpdateRepository {
         val tempFile = File(updatesDir, "win11_update_${safeTag}.apk.part")
         val targetFile = File(updatesDir, "win11_update_${safeTag}.apk")
 
-        var currentUrl = apkUrl
-        var connection: HttpURLConnection? = null
-        var redirects = 0
-
-        try {
-            while (true) {
-                connection = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
-                    instanceFollowRedirects = false
-                    requestMethod = "GET"
-                    connectTimeout = 15_000
-                    readTimeout = 30_000
-                    setRequestProperty("User-Agent", "Win11Launcher-Android/${BuildConfig.VERSION_NAME}")
-                    setRequestProperty("Accept", "application/octet-stream")
-                }
-                val code = connection.responseCode
-                if (code in 300..399) {
-                    val loc = connection.getHeaderField("Location")
-                        ?: throw IllegalStateException("Redirect URL kosong saat mengunduh APK")
-                    connection.disconnect()
-                    redirects++
-                    if (redirects > 6) throw IllegalStateException("Terlalu banyak redirect saat mengunduh APK")
-                    currentUrl = URL(URL(currentUrl), loc).toString()
-                } else if (code in 200..299) {
-                    break
-                } else {
-                    throw IllegalStateException("Gagal mengunduh APK (HTTP $code)")
-                }
-            }
-
-            val conn = connection ?: throw IllegalStateException("Koneksi gagal")
-            val totalBytes = conn.contentLengthLong.coerceAtLeast(0L)
-            var downloaded = 0L
-            var lastEmit = 0L
-
-            conn.inputStream.use { input ->
-                FileOutputStream(tempFile).use { output ->
-                    val buffer = ByteArray(16 * 1024)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read <= 0) break
-                        output.write(buffer, 0, read)
-                        downloaded += read
-                        val now = System.currentTimeMillis()
-                        if (now - lastEmit >= 75L || downloaded == totalBytes) {
-                            lastEmit = now
-                            onProgress(downloaded, totalBytes)
-                        }
-                    }
-                    output.flush()
-                }
-            }
-            onProgress(downloaded, totalBytes.coerceAtLeast(downloaded))
-
-            // Verify APK is a valid ZIP archive (PK\x03\x04)
-            val header = ByteArray(4)
-            val headerRead = tempFile.inputStream().use { it.read(header) }
-            val isZip = headerRead == 4 &&
-                header[0] == 0x50.toByte() &&
-                header[1] == 0x4B.toByte() &&
-                header[2] == 0x03.toByte() &&
-                header[3] == 0x04.toByte()
-            if (!isZip || tempFile.length() < 1024L) {
-                tempFile.delete()
-                throw IllegalStateException("File APK yang diunduh tidak valid atau rusak")
-            }
-
-            if (targetFile.exists()) targetFile.delete()
-            if (!tempFile.renameTo(targetFile)) {
-                tempFile.copyTo(targetFile, overwrite = true)
-                tempFile.delete()
-            }
-            targetFile
-        } finally {
-            connection?.disconnect()
+        var lastException: Throwable? = null
+        for (attempt in 1..3) {
             if (tempFile.exists()) tempFile.delete()
+            var currentUrl = apkUrl
+            var connection: HttpURLConnection? = null
+            var redirects = 0
+
+            try {
+                while (true) {
+                    connection = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
+                        instanceFollowRedirects = false
+                        requestMethod = "GET"
+                        connectTimeout = 30_000
+                        readTimeout = 120_000
+                        setRequestProperty("User-Agent", "Win11Launcher-Android/${BuildConfig.VERSION_NAME}")
+                        setRequestProperty("Accept", "application/octet-stream")
+                    }
+                    val code = connection.responseCode
+                    if (code in 300..399) {
+                        val loc = connection.getHeaderField("Location")
+                            ?: throw IllegalStateException("Redirect URL kosong saat mengunduh APK")
+                        connection.disconnect()
+                        redirects++
+                        if (redirects > 6) throw IllegalStateException("Terlalu banyak redirect saat mengunduh APK")
+                        currentUrl = URL(URL(currentUrl), loc).toString()
+                    } else if (code in 200..299) {
+                        break
+                    } else {
+                        throw IllegalStateException("Gagal mengunduh APK (HTTP $code)")
+                    }
+                }
+
+                val conn = connection ?: throw IllegalStateException("Koneksi gagal")
+                val totalBytes = conn.contentLengthLong.coerceAtLeast(0L)
+                var downloaded = 0L
+                var lastEmit = 0L
+
+                conn.inputStream.use { input ->
+                    FileOutputStream(tempFile).use { output ->
+                        val buffer = ByteArray(16 * 1024)
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read <= 0) break
+                            output.write(buffer, 0, read)
+                            downloaded += read
+                            val now = System.currentTimeMillis()
+                            if (now - lastEmit >= 75L || downloaded == totalBytes) {
+                                lastEmit = now
+                                onProgress(downloaded, totalBytes)
+                            }
+                        }
+                        output.flush()
+                    }
+                }
+                onProgress(downloaded, totalBytes.coerceAtLeast(downloaded))
+
+                // Verify APK is a valid ZIP archive (PK\x03\x04)
+                val header = ByteArray(4)
+                val headerRead = tempFile.inputStream().use { it.read(header) }
+                val isZip = headerRead == 4 &&
+                    header[0] == 0x50.toByte() &&
+                    header[1] == 0x4B.toByte() &&
+                    header[2] == 0x03.toByte() &&
+                    header[3] == 0x04.toByte()
+                if (!isZip || tempFile.length() < 1024L) {
+                    tempFile.delete()
+                    throw IllegalStateException("File APK yang diunduh tidak valid atau rusak")
+                }
+
+                if (targetFile.exists()) targetFile.delete()
+                if (!tempFile.renameTo(targetFile)) {
+                    tempFile.copyTo(targetFile, overwrite = true)
+                    tempFile.delete()
+                }
+                return@withContext targetFile
+            } catch (e: Exception) {
+                lastException = e
+                connection?.disconnect()
+                if (tempFile.exists()) tempFile.delete()
+                if (attempt < 3) {
+                    kotlinx.coroutines.delay(1500L * attempt)
+                }
+            } finally {
+                connection?.disconnect()
+            }
         }
+        throw lastException ?: IllegalStateException("Gagal mengunduh APK setelah beberapa kali percobaan")
     }
 
     fun cleanupUpdateFiles(context: Context, specificPath: String? = null): Boolean {

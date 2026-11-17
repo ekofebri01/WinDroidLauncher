@@ -299,10 +299,31 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             }
         }
         val combined = defaults + userApps
-        return if (prefs.sortAlphabetically) {
+        val sorted = if (prefs.sortAlphabetically) {
             combined.sortedBy { it.label.lowercase() }
         } else {
             combined
+        }
+        if (prefs.desktopShortcutOrder.isNotEmpty()) {
+            val byId = sorted.associateBy { it.id }
+            val ordered = prefs.desktopShortcutOrder.mapNotNull { byId[it] }
+            val remaining = sorted.filterNot { prefs.desktopShortcutOrder.contains(it.id) }
+            return ordered + remaining
+        }
+        return sorted
+    }
+
+    fun reorderDesktopShortcuts(fromId: String, toId: String) {
+        val currentShortcuts = buildDesktopShortcuts(uiState.value.preferences, installedAppsFlow.value.associateBy { it.packageName })
+        val currentIds = currentShortcuts.map { it.id }.toMutableList()
+        val fromIdx = currentIds.indexOf(fromId)
+        val toIdx = currentIds.indexOf(toId)
+        if (fromIdx >= 0 && toIdx >= 0) {
+            val item = currentIds.removeAt(fromIdx)
+            currentIds.add(toIdx, item)
+            viewModelScope.launch {
+                prefsRepo.setDesktopShortcutOrder(currentIds)
+            }
         }
     }
 

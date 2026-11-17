@@ -341,7 +341,8 @@ fun PersonalizeWindowContent(
     onSetAutoCheckUpdates: (Boolean) -> Unit,
     onCheckGitHubUpdates: () -> Unit,
     onOpenGitHubRelease: (Boolean) -> Unit,
-    onStartInAppUpdate: () -> Unit
+    onStartInAppUpdate: () -> Unit,
+    onOpenPanelSelector: () -> Unit
 ) {
     val winColors = LocalWin11Colors.current
     var nameDraft by remember(preferences.userName) { mutableStateOf(preferences.userName) }
@@ -711,7 +712,8 @@ fun PersonalizeWindowContent(
             onSetShowDesktopButton = onSetShowDesktopButton,
             onSet24HourClock = onSet24HourClock,
             onSetShowSeconds = onSetShowSeconds,
-            onResetTaskbarDefaults = onResetTaskbarDefaults
+            onResetTaskbarDefaults = onResetTaskbarDefaults,
+            onOpenPanelSelector = onOpenPanelSelector
         )
 
         // Desktop Icon Size

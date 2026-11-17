@@ -14,8 +14,11 @@ Format changelog mengacu pada [Keep a Changelog](https://keepachangelog.com/id-I
   - Pengaturan **Opasitas Taskbar** (45% – 100%) dan **Ukuran Ikon** (*Small*, *Medium*, *Large*).
   - Toggle visibilitas komponen utama taskbar: Tombol *Search Mode* (*Auto*, *Icon*, *Search Box*, *Hidden*), *Task View*, *File Explorer*, *Pinned Apps*, dan tombol *Show Desktop*.
   - Toggle visibilitas individual komponen *System Tray*: Panah *Hidden Icons* (`^`), Indikator Wi-Fi/Jaringan, Ikon Volume, Ikon Baterai, Persentase Baterai (%), Jam & Tanggal, format 24 Jam, Detik, Titik Notifikasi, serta tombol Reset ke Default.
+  - Penambahan dialog cepat **Pilih Panel & Item Taskbar** (`Win11TaskbarPanelSelectorDialog`) yang dapat dibuka langsung dengan **tahan lama (long-press) pada area kosong taskbar** atau lewat tombol di **Settings → Personalize**.
 - **Pembaruan UI Taskbar**
   - Menghapus tombol Widget di sisi kiri taskbar demi kebersihan layout desktop.
+- **Perbaikan Download Update & Timeout Resilience**
+  - Memperpanjang batas waktu koneksi (30 detik) dan pembacaan stream (120 detik) serta menambahkan mekanisme *auto-retry* (hingga 3 kali percobaan) pada proses unduhan in-app update APK untuk mencegah kendala *timeout* atau *download failed*.
 - **Build Release APK v1.0.1**
   - Berhasil membangun dan memvalidasi rilis APK v1.0.1 (`versionCode = 2`) dengan tanda tangan kompatibel untuk *instal timpa*.
 

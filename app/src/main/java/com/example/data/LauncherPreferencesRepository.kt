@@ -63,6 +63,7 @@ class LauncherPreferencesRepository(private val context: Context) {
         val GITHUB_REPO_SLUG = stringPreferencesKey("github_repo_slug")
         val AUTO_CHECK_UPDATES = booleanPreferencesKey("auto_check_updates")
         val PENDING_UPDATE_CLEANUP_PATH = stringPreferencesKey("pending_update_cleanup_path")
+        val DESKTOP_SHORTCUT_ORDER = stringPreferencesKey("desktop_shortcut_order")
     }
 
     val preferencesFlow: Flow<LauncherPreferences> = context.launcherDataStore.data.map { prefs ->
@@ -115,7 +116,8 @@ class LauncherPreferencesRepository(private val context: Context) {
             sortAlphabetically = prefs[Keys.SORT_ALPHABETICALLY] ?: false,
             safeHomeGuardEnabled = prefs[Keys.SAFE_HOME_GUARD] ?: true,
             githubRepoSlug = prefs[Keys.GITHUB_REPO_SLUG] ?: "",
-            autoCheckUpdates = prefs[Keys.AUTO_CHECK_UPDATES] ?: true
+            autoCheckUpdates = prefs[Keys.AUTO_CHECK_UPDATES] ?: true,
+            desktopShortcutOrder = decodeList(prefs[Keys.DESKTOP_SHORTCUT_ORDER])
         )
     }
 
@@ -348,6 +350,12 @@ class LauncherPreferencesRepository(private val context: Context) {
             current.remove(packageName)
             current.add(0, packageName)
             prefs[Keys.RECENT_APP_PACKAGES] = encodeList(current.take(8))
+        }
+    }
+
+    suspend fun setDesktopShortcutOrder(order: List<String>) {
+        context.launcherDataStore.edit { prefs ->
+            prefs[Keys.DESKTOP_SHORTCUT_ORDER] = encodeList(order)
         }
     }
 

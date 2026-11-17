@@ -17,6 +17,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -69,7 +71,8 @@ fun Win11TaskbarSettingsSection(
     onSetShowDesktopButton: (Boolean) -> Unit,
     onSet24HourClock: (Boolean) -> Unit,
     onSetShowSeconds: (Boolean) -> Unit,
-    onResetTaskbarDefaults: () -> Unit
+    onResetTaskbarDefaults: () -> Unit,
+    onOpenPanelSelector: () -> Unit
 ) {
     val winColors = LocalWin11Colors.current
 
@@ -121,6 +124,18 @@ fun Win11TaskbarSettingsSection(
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("Reset")
             }
+        }
+
+        // Quick Selector Button
+        Button(
+            onClick = onOpenPanelSelector,
+            colors = ButtonDefaults.buttonColors(containerColor = winColors.accentSoft),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth().testTag("settings_open_panel_selector")
+        ) {
+            Icon(Icons.Rounded.Tune, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Pilih & Atur Panel Taskbar Sendiri...", color = Color.White, fontWeight = FontWeight.SemiBold)
         }
 
         HorizontalDivider(color = winColors.subtleBorder)
@@ -396,7 +411,7 @@ fun Win11TaskbarSettingsSection(
 }
 
 @Composable
-private fun ChoiceChipBox(
+internal fun ChoiceChipBox(
     text: String,
     selected: Boolean,
     onClick: () -> Unit,
@@ -428,7 +443,7 @@ private fun ChoiceChipBox(
 }
 
 @Composable
-private fun TaskbarToggleRow(
+internal fun TaskbarToggleRow(
     title: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,

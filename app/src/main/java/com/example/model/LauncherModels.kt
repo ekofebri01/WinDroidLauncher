@@ -149,7 +149,8 @@ data class LauncherPreferences(
     val sortAlphabetically: Boolean = false,
     val safeHomeGuardEnabled: Boolean = true,
     val githubRepoSlug: String = "",
-    val autoCheckUpdates: Boolean = true
+    val autoCheckUpdates: Boolean = true,
+    val desktopShortcutOrder: List<String> = emptyList()
 )
 
 @Immutable

@@ -34,6 +34,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -75,6 +76,7 @@ import com.example.ui.components.Win11QuickSettingsFlyout
 import com.example.ui.components.Win11StartMenu
 import com.example.ui.components.Win11TaskViewFlyout
 import com.example.ui.components.Win11Taskbar
+import com.example.ui.components.Win11TaskbarPanelSelectorDialog
 import com.example.ui.components.Win11WindowFrame
 import com.example.ui.theme.Win11LauncherTheme
 import com.example.viewmodel.FileExplorerViewModel
@@ -302,6 +304,7 @@ private fun Win11DesktopRoot(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        var showTaskbarPanelSelector by remember { mutableStateOf(false) }
         // 1. Desktop Wallpaper Layer
         WallpaperBackground(
             option = prefs.wallpaperOption,
@@ -450,7 +453,8 @@ private fun Win11DesktopRoot(
                                 onSetAutoCheckUpdates = { viewModel.setAutoCheckUpdates(it) },
                                 onCheckGitHubUpdates = { viewModel.checkForGitHubUpdates() },
                                 onOpenGitHubRelease = { preferApk -> viewModel.openGitHubReleaseUrl(preferApk) },
-                                onStartInAppUpdate = { viewModel.startInAppUpdate() }
+                                onStartInAppUpdate = { viewModel.startInAppUpdate() },
+                                onOpenPanelSelector = { showTaskbarPanelSelector = true }
                             )
                             DesktopWindowType.RECYCLE_BIN_APPS -> AppManagerWindowContent(
                                 apps = state.installedApps,
@@ -642,7 +646,8 @@ private fun Win11DesktopRoot(
                 onShowDesktopClick = { viewModel.showDesktop() },
                 onPinnedAppClick = { viewModel.launchApp(it) },
                 onPinnedAppLongPress = { viewModel.showAppContextMenu(it) },
-                onWindowTaskbarClick = { viewModel.focusOrToggleWindowFromTaskbar(it) }
+                onWindowTaskbarClick = { viewModel.focusOrToggleWindowFromTaskbar(it) },
+                onTaskbarLongClick = { showTaskbarPanelSelector = true }
             )
         }
 
@@ -693,6 +698,32 @@ private fun Win11DesktopRoot(
             onRetryUpdate = { viewModel.startInAppUpdate() },
             onDismiss = { viewModel.dismissInAppUpdateStage() }
         )
+
+        // 6b. Taskbar Panel Selector Dialog (Long-press taskbar or Settings button)
+        if (showTaskbarPanelSelector) {
+            Win11TaskbarPanelSelectorDialog(
+                preferences = prefs,
+                onSetTaskbarAlignment = { viewModel.setTaskbarAlignment(it) },
+                onSetTaskbarStyle = { viewModel.setTaskbarStyle(it) },
+                onSetTaskbarSearchMode = { viewModel.setTaskbarSearchMode(it) },
+                onSetShowTaskView = { viewModel.setShowTaskViewInTaskbar(it) },
+                onSetShowFileExplorer = { viewModel.setShowFileExplorerInTaskbar(it) },
+                onSetShowPinnedApps = { viewModel.setShowPinnedAppsInTaskbar(it) },
+                onSetShowHiddenTray = { viewModel.setShowHiddenTrayInTaskbar(it) },
+                onSetShowTrayNetwork = { viewModel.setShowTrayNetwork(it) },
+                onSetShowTrayVolume = { viewModel.setShowTrayVolume(it) },
+                onSetShowTrayBattery = { viewModel.setShowTrayBattery(it) },
+                onSetShowTrayBatteryPercent = { viewModel.setShowTrayBatteryPercent(it) },
+                onSetShowTrayClock = { viewModel.setShowTrayClock(it) },
+                onSetShowTrayDate = { viewModel.setShowTrayDate(it) },
+                onSetShowTrayNotificationDot = { viewModel.setShowTrayNotificationDot(it) },
+                onSet24HourClock = { viewModel.setUse24HourClock(it) },
+                onSetShowSeconds = { viewModel.setShowSecondsInClock(it) },
+                onSetShowDesktopButton = { viewModel.setShowDesktopButtonInTaskbar(it) },
+                onResetTaskbarDefaults = { viewModel.resetTaskbarSettingsToDefault() },
+                onDismiss = { showTaskbarPanelSelector = false }
+            )
+        }
 
         // 7. Lock Screen Overlay
         AnimatedVisibility(

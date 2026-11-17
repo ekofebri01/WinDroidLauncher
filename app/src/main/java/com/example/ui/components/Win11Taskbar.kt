@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -88,6 +90,7 @@ fun Win11Taskbar(
     onPinnedAppClick: (InstalledApp) -> Unit,
     onPinnedAppLongPress: (InstalledApp) -> Unit,
     onWindowTaskbarClick: (DesktopWindowType) -> Unit,
+    onTaskbarLongClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val winColors = LocalWin11Colors.current
@@ -117,12 +120,18 @@ fun Win11Taskbar(
             .clip(floatingShape)
             .background(barBg)
             .border(1.dp, winColors.border, floatingShape)
+            .pointerInput(onTaskbarLongClick) {
+                detectTapGestures(onLongPress = { onTaskbarLongClick() })
+            }
             .testTag("win11_taskbar")
     } else {
         modifier
             .fillMaxWidth()
             .background(barBg)
             .navigationBarsPadding()
+            .pointerInput(onTaskbarLongClick) {
+                detectTapGestures(onLongPress = { onTaskbarLongClick() })
+            }
             .testTag("win11_taskbar")
     }
 
