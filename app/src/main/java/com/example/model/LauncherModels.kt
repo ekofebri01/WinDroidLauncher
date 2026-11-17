@@ -1,5 +1,6 @@
 package com.example.model
 
+import android.appwidget.AppWidgetProviderInfo
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.ImageBitmap
 
@@ -28,6 +29,35 @@ data class DesktopShortcut(
     val kind: ShortcutKind,
     val packageName: String? = null,
     val app: InstalledApp? = null
+)
+
+@Immutable
+data class DesktopWidget(
+    val appWidgetId: Int,
+    val providerPackage: String,
+    val providerClass: String,
+    val label: String,
+    val xDp: Float = 24f,
+    val yDp: Float = 24f,
+    val widthDp: Float = 240f,
+    val heightDp: Float = 150f,
+    val minWidthDp: Int = 96,
+    val minHeightDp: Int = 72
+)
+
+@Immutable
+data class AppWidgetItem(
+    val providerPackage: String,
+    val providerClass: String,
+    val appName: String,
+    val widgetLabel: String,
+    val defaultWidthDp: Float,
+    val defaultHeightDp: Float,
+    val minWidthDp: Int,
+    val minHeightDp: Int,
+    val previewBitmap: ImageBitmap? = null,
+    val appIcon: ImageBitmap? = null,
+    val providerInfo: AppWidgetProviderInfo? = null
 )
 
 enum class WallpaperOption(val displayName: String) {
@@ -81,6 +111,7 @@ enum class DesktopWindowType(val defaultTitle: String) {
     THIS_PC("This PC"),
     USER_FILES("User Files"),
     SETTINGS_PERSONALIZE("Settings — Personalization"),
+    TASKBAR_PANEL_SETTINGS("Taskbar & Panel Settings"),
     RECYCLE_BIN_APPS("Installed Apps Manager")
 }
 
@@ -140,6 +171,7 @@ data class LauncherPreferences(
     val use24HourClock: Boolean = true,
     val showSecondsInClock: Boolean = false,
     val hideSystemStatusBar: Boolean = false,
+    val hideSystemNavBar: Boolean = false,
     val userName: String = "Administrator",
     val pinnedStartPackages: List<String> = emptyList(),
     val pinnedTaskbarPackages: List<String> = emptyList(),
@@ -150,7 +182,8 @@ data class LauncherPreferences(
     val safeHomeGuardEnabled: Boolean = true,
     val githubRepoSlug: String = "",
     val autoCheckUpdates: Boolean = true,
-    val desktopShortcutOrder: List<String> = emptyList()
+    val desktopShortcutOrder: List<String> = emptyList(),
+    val desktopWidgets: List<DesktopWidget> = emptyList()
 )
 
 @Immutable

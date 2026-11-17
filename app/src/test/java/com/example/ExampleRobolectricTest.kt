@@ -5,6 +5,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -14,7 +15,10 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.GitHubUpdateRepository
+import com.example.data.LauncherPreferencesRepository
+import com.example.model.DesktopWidget
 import java.io.File
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -259,16 +263,32 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun `taskbar panel selector dialog lets user toggle panels independently`() {
+    fun `floating taskbar and panel settings window lets user toggle navbar and panels independently`() {
         composeRule.waitForIdle()
 
-        // Open Personalize -> click "Pilih & Atur Panel Taskbar Sendiri..."
+        // Open Personalize as a floating window -> verify Hide Navbar switch -> open floating Panel & Taskbar window
         composeRule.onNodeWithTag("desktop_shortcut_sys_personalize").performClick()
         composeRule.waitForIdle()
+        composeRule.onNodeWithTag("window_SETTINGS_PERSONALIZE").assertIsDisplayed()
+        composeRule.onNodeWithTag("window_resize_br_SETTINGS_PERSONALIZE").assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_toggle_hide_navbar").performScrollTo().assertIsDisplayed()
+
         composeRule.onNodeWithTag("settings_open_panel_selector").performScrollTo().performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithTag("taskbar_panel_selector_dialog").assertIsDisplayed()
+        // Verify Taskbar & Panel Settings opens inside a floating Win11WindowFrame
+        composeRule.onNodeWithTag("window_TASKBAR_PANEL_SETTINGS").assertIsDisplayed()
+        composeRule.onNodeWithTag("window_minimize_TASKBAR_PANEL_SETTINGS").assertIsDisplayed()
+        composeRule.onNodeWithTag("window_maximize_TASKBAR_PANEL_SETTINGS").assertIsDisplayed()
+        composeRule.onNodeWithTag("window_close_TASKBAR_PANEL_SETTINGS").assertIsDisplayed()
+        composeRule.onNodeWithTag("window_resize_br_TASKBAR_PANEL_SETTINGS").assertIsDisplayed()
+        composeRule.onNodeWithTag("taskbar_panel_settings_content").assertIsDisplayed()
+
+        // Toggle Hide Navbar inside the floating window
+        composeRule.onNodeWithTag("selector_toggle_hide_navbar").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("selector_toggle_hide_navbar").performScrollTo().performClick()
+        composeRule.waitForIdle()
 
         // Toggle Task View off and verify taskbar hides Task View
         composeRule.onNodeWithTag("selector_toggle_task_view").performScrollTo().performClick()
@@ -284,7 +304,7 @@ class ExampleRobolectricTest {
                 .fetchSemanticsNodes().isEmpty()
         }
 
-        // Reset defaults inside selector dialog and close
+        // Reset defaults inside floating window and close via caption Close button
         composeRule.onNodeWithTag("selector_reset_button").performClick()
         composeRule.waitUntil(timeoutMillis = 3_000L) {
             composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("taskbar_task_view_button"))
@@ -293,8 +313,119 @@ class ExampleRobolectricTest {
                     .fetchSemanticsNodes().isNotEmpty()
         }
 
-        composeRule.onNodeWithTag("selector_close_button").performClick()
+        composeRule.onNodeWithTag("window_close_TASKBAR_PANEL_SETTINGS").performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("taskbar_panel_selector_dialog").assertDoesNotExist()
+        composeRule.onNodeWithTag("window_TASKBAR_PANEL_SETTINGS").assertDoesNotExist()
+    }
+
+    @Test
+    fun `windows 11 system tray shows fluent indicators and flyouts`() {
+        composeRule.waitForIdle()
+
+        // Verify all Windows 11 System Tray clusters are displayed
+        composeRule.onNodeWithTag("tray_hidden_icons_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("tray_quick_settings_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("tray_wifi_indicator", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("tray_volume_indicator", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("tray_battery_status", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("tray_clock_date_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("tray_notification_bell", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("tray_show_desktop_button").assertIsDisplayed()
+
+        // Open Hidden Tray Flyout from chevron (^)
+        composeRule.onNodeWithTag("tray_hidden_icons_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("win11_hidden_tray_flyout").assertIsDisplayed()
+
+        // Open Quick Settings Flyout and verify Customize System Tray + Personalize footer
+        composeRule.onNodeWithTag("tray_quick_settings_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("win11_quick_settings").assertIsDisplayed()
+        composeRule.onNodeWithTag("quick_settings_tray_customize").assertIsDisplayed()
+        composeRule.onNodeWithTag("quick_settings_personalize_button").assertIsDisplayed()
+
+        // Open Calendar & Notifications Flyout and test collapsible calendar toggle
+        composeRule.onNodeWithTag("tray_clock_date_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("win11_calendar_flyout").assertIsDisplayed()
+        composeRule.onNodeWithText("Notifications").assertIsDisplayed()
+        composeRule.onNodeWithTag("calendar_collapse_toggle").performClick()
+        composeRule.waitForIdle()
+    }
+
+    @Test
+    fun `desktop app widget can be added via picker, resized freely, and removed`() {
+        composeRule.waitForIdle()
+        val context = ApplicationProvider.getApplicationContext<Context>()
+
+        // 1. Open Personalize -> tap "Tambah Widget Aplikasi ke Desktop..."
+        composeRule.onNodeWithTag("desktop_shortcut_sys_personalize").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("settings_open_widget_picker").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("win11_widget_picker_dialog").assertIsDisplayed()
+        composeRule.onNodeWithTag("widget_picker_search").assertIsDisplayed()
+
+        // Close dialog & Personalize window
+        composeRule.onNodeWithContentDescription("Tutup pemilih widget").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("window_close_SETTINGS_PERSONALIZE").performClick()
+        composeRule.waitForIdle()
+
+        // 2. Persist a DesktopWidget directly to DataStore and verify it renders on Desktop
+        val testWidget = DesktopWidget(
+            appWidgetId = 77,
+            providerPackage = "com.example.clock",
+            providerClass = "ClockWidgetProvider",
+            label = "Jam Analog",
+            xDp = 120f,
+            yDp = 32f,
+            widthDp = 220f,
+            heightDp = 140f,
+            minWidthDp = 96,
+            minHeightDp = 72
+        )
+        runBlocking {
+            LauncherPreferencesRepository(context).addDesktopWidget(testWidget)
+        }
+
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("desktop_widget_77"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("desktop_widget_77").assertIsDisplayed()
+        composeRule.onNodeWithText("Jam Analog").assertIsDisplayed()
+
+        // 3. Enter widget edit mode via the quick-edit trigger badge
+        composeRule.onNodeWithTag("widget_edit_trigger_77").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("widget_size_label_77").assertIsDisplayed()
+        composeRule.onNodeWithTag("widget_resize_br_77").assertIsDisplayed()
+        composeRule.onNodeWithTag("widget_resize_right_77").assertIsDisplayed()
+        composeRule.onNodeWithTag("widget_resize_bottom_77").assertIsDisplayed()
+
+        // 4. Drag bottom-right resize handle outward to enlarge widget
+        val beforeResize = composeRule.onNodeWithTag("desktop_widget_77").getBoundsInRoot()
+        composeRule.onNodeWithTag("widget_resize_br_77").performTouchInput {
+            swipe(
+                start = center,
+                end = Offset(center.x + 80f, center.y + 60f),
+                durationMillis = 150
+            )
+        }
+        composeRule.waitForIdle()
+        val afterResize = composeRule.onNodeWithTag("desktop_widget_77").getBoundsInRoot()
+        assertTrue(
+            "Expected desktop widget bounds to grow after dragging resize handle",
+            (afterResize.right - afterResize.left) > (beforeResize.right - beforeResize.left) ||
+                (afterResize.bottom - afterResize.top) > (beforeResize.bottom - beforeResize.top)
+        )
+
+        // 5. Remove widget cleanly
+        composeRule.onNodeWithTag("widget_remove_77").performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("desktop_widget_77"))
+                .fetchSemanticsNodes().isEmpty()
+        }
     }
 }

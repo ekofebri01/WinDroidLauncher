@@ -34,7 +34,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -54,10 +53,12 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.example.data.DesktopWidgetManager
 import com.example.model.ActivePanel
 import com.example.model.DesktopShortcut
 import com.example.model.DesktopWindowType
 import com.example.model.ExplorerLocation
+import com.example.model.GitHubUpdateStatus
 import com.example.model.ShortcutKind
 import com.example.model.WallpaperOption
 import com.example.ui.components.AppManagerWindowContent
@@ -68,6 +69,7 @@ import com.example.ui.components.UserFilesWindowContent
 import com.example.ui.components.Win11CalendarFlyout
 import com.example.ui.components.Win11ContextMenuDialog
 import com.example.ui.components.Win11DesktopGrid
+import com.example.ui.components.Win11DesktopWidgetsLayer
 import com.example.ui.components.Win11FileExplorerContent
 import com.example.ui.components.Win11HiddenTrayFlyout
 import com.example.ui.components.Win11InAppUpdateDialog
@@ -76,15 +78,33 @@ import com.example.ui.components.Win11QuickSettingsFlyout
 import com.example.ui.components.Win11StartMenu
 import com.example.ui.components.Win11TaskViewFlyout
 import com.example.ui.components.Win11Taskbar
-import com.example.ui.components.Win11TaskbarPanelSelectorDialog
+import com.example.ui.components.Win11TaskbarPanelSettingsContent
+import com.example.ui.components.Win11WidgetPickerDialog
 import com.example.ui.components.Win11WindowFrame
 import com.example.ui.theme.Win11LauncherTheme
 import com.example.viewmodel.FileExplorerViewModel
 import com.example.viewmodel.LauncherViewModel
+import com.example.viewmodel.PendingWidgetAction
 
 class MainActivity : ComponentActivity() {
 
     private var homeIntentSeq by mutableIntStateOf(0)
+    private var activeBindAction: PendingWidgetAction.BindPermission? = null
+    private var activeConfigureAction: PendingWidgetAction.Configure? = null
+    private var onConfigureResultCallback: ((Boolean, PendingWidgetAction.Configure) -> Unit)? = null
+
+    @Deprecated("Required for AppWidgetHost configure activity result")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == DesktopWidgetManager.REQUEST_CONFIGURE_APPWIDGET) {
+            val pending = activeConfigureAction
+            activeConfigureAction = null
+            if (pending != null) {
+                onConfigureResultCallback?.invoke(resultCode == RESULT_OK, pending)
+            }
+        }
+    }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -108,6 +128,7 @@ class MainActivity : ComponentActivity() {
             val explorerState by explorerViewModel.state.collectAsStateWithLifecycle()
             val explorerToast by explorerViewModel.toastEvent.collectAsStateWithLifecycle()
             val installPrompt by viewModel.installPromptIntent.collectAsStateWithLifecycle()
+            val pendingWidgetAction by viewModel.pendingWidgetAction.collectAsStateWithLifecycle()
             val context = LocalContext.current
             val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -123,20 +144,89 @@ class MainActivity : ComponentActivity() {
                 viewModel.onResumeCheckInstallPermission()
             }
 
+            val bindWidgetLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                val pending = activeBindAction
+                activeBindAction = null
+                if (pending != null) {
+                    viewModel.onBindPermissionResult(
+                        granted = result.resultCode == RESULT_OK,
+                        appWidgetId = pending.appWidgetId,
+                        item = pending.item
+                    )
+                }
+            }
+
+            DisposableEffect(viewModel) {
+                onConfigureResultCallback = { ok, action ->
+                    viewModel.onConfigureWidgetResult(
+                        ok = ok,
+                        appWidgetId = action.appWidgetId,
+                        item = action.item,
+                        deleteOnCancel = action.deleteOnCancel
+                    )
+                }
+                onDispose {
+                    onConfigureResultCallback = null
+                }
+            }
+
             DisposableEffect(lifecycleOwner) {
                 val observer = LifecycleEventObserver { _, event ->
-                    if (event == Lifecycle.Event.ON_RESUME) {
-                        viewModel.refreshHomeLauncherStatus()
-                        viewModel.onResumeCheckInstallPermission()
+                    when (event) {
+                        Lifecycle.Event.ON_START -> viewModel.widgetManager.startListening()
+                        Lifecycle.Event.ON_STOP -> viewModel.widgetManager.stopListening()
+                        Lifecycle.Event.ON_RESUME -> {
+                            viewModel.refreshHomeLauncherStatus()
+                            viewModel.onResumeCheckInstallPermission()
+                        }
+                        else -> Unit
                     }
                 }
                 lifecycleOwner.lifecycle.addObserver(observer)
-                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                onDispose {
+                    lifecycleOwner.lifecycle.removeObserver(observer)
+                    viewModel.widgetManager.stopListening()
+                }
             }
 
             LaunchedEffect(homeIntentSeq) {
                 if (homeIntentSeq > 0) {
                     viewModel.handleHomeIntent()
+                }
+            }
+
+            LaunchedEffect(pendingWidgetAction) {
+                when (val action = pendingWidgetAction) {
+                    is PendingWidgetAction.BindPermission -> {
+                        activeBindAction = action
+                        viewModel.clearPendingWidgetAction()
+                        runCatching {
+                            bindWidgetLauncher.launch(action.intent)
+                        }.onFailure {
+                            activeBindAction = null
+                            viewModel.onBindPermissionResult(false, action.appWidgetId, action.item)
+                        }
+                    }
+                    is PendingWidgetAction.Configure -> {
+                        activeConfigureAction = action
+                        viewModel.clearPendingWidgetAction()
+                        val launched = viewModel.widgetManager.launchConfigureActivity(
+                            activity = this@MainActivity,
+                            appWidgetId = action.appWidgetId
+                        )
+                        if (!launched) {
+                            activeConfigureAction = null
+                            viewModel.onConfigureWidgetResult(
+                                ok = false,
+                                appWidgetId = action.appWidgetId,
+                                item = action.item,
+                                deleteOnCancel = action.deleteOnCancel
+                            )
+                        }
+                    }
+                    null -> Unit
                 }
             }
 
@@ -181,8 +271,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Sync system bars immersion preference
-            LaunchedEffect(state.preferences.hideSystemStatusBar, state.preferences.isDarkTheme) {
+            // Sync system bars immersion preference (status bar + navigation bar)
+            LaunchedEffect(
+                state.preferences.hideSystemStatusBar,
+                state.preferences.hideSystemNavBar,
+                state.preferences.isDarkTheme
+            ) {
                 val controller = WindowCompat.getInsetsController(window, window.decorView)
                 controller.systemBarsBehavior =
                     WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -190,6 +284,11 @@ class MainActivity : ComponentActivity() {
                     controller.hide(WindowInsetsCompat.Type.statusBars())
                 } else {
                     controller.show(WindowInsetsCompat.Type.statusBars())
+                }
+                if (state.preferences.hideSystemNavBar) {
+                    controller.hide(WindowInsetsCompat.Type.navigationBars())
+                } else {
+                    controller.show(WindowInsetsCompat.Type.navigationBars())
                 }
             }
 
@@ -211,13 +310,17 @@ class MainActivity : ComponentActivity() {
             BackHandler(
                 enabled = state.isLocked ||
                     state.showSafeHomeDialog ||
+                    state.showWidgetPickerDialog ||
+                    state.editingWidgetId != null ||
                     state.activePanel != ActivePanel.NONE ||
                     state.openWindows.any { !it.isMinimized } ||
                     state.contextMenu != null
             ) {
                 when {
                     state.showSafeHomeDialog -> viewModel.dismissSafeHomeDialog()
+                    state.showWidgetPickerDialog -> viewModel.dismissWidgetPicker()
                     state.contextMenu != null -> viewModel.dismissContextMenu()
+                    state.editingWidgetId != null -> viewModel.stopEditingWidget()
                     state.activePanel != ActivePanel.NONE -> viewModel.closeAllPanels()
                     state.activeWindowType == DesktopWindowType.FILE_EXPLORER &&
                         explorerState.activeTab.backStack.isNotEmpty() -> {
@@ -304,7 +407,6 @@ private fun Win11DesktopRoot(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        var showTaskbarPanelSelector by remember { mutableStateOf(false) }
         // 1. Desktop Wallpaper Layer
         WallpaperBackground(
             option = prefs.wallpaperOption,
@@ -330,6 +432,20 @@ private fun Win11DesktopRoot(
                     onDesktopLongPress = { viewModel.showDesktopBackgroundMenu() },
                     onShortcutTap = { handleOpenShortcut(it) },
                     onShortcutLongPress = { viewModel.showShortcutContextMenu(it) }
+                )
+
+                // Resizable & Movable Desktop App Widgets Layer
+                Win11DesktopWidgetsLayer(
+                    widgets = prefs.desktopWidgets,
+                    widgetManager = viewModel.widgetManager,
+                    editingWidgetId = state.editingWidgetId,
+                    onStartEditing = { viewModel.startEditingWidget(it) },
+                    onStopEditing = { viewModel.stopEditingWidget() },
+                    onUpdateBounds = { id, x, y, w, h ->
+                        viewModel.updateWidgetBounds(id, x, y, w, h)
+                    },
+                    onReconfigureWidget = { viewModel.reconfigureDesktopWidget(it) },
+                    onRemoveWidget = { viewModel.removeDesktopWidget(it) }
                 )
 
                 // Open Windows Layer
@@ -438,6 +554,7 @@ private fun Win11DesktopRoot(
                                 onSet24HourClock = { viewModel.setUse24HourClock(it) },
                                 onSetShowSeconds = { viewModel.setShowSecondsInClock(it) },
                                 onSetHideStatusBar = { viewModel.setHideSystemStatusBar(it) },
+                                onSetHideNavBar = { viewModel.setHideSystemNavBar(it) },
                                 onSetUserName = { viewModel.setUserName(it) },
                                 onRestoreDefaults = { viewModel.restoreDefaultShortcuts() },
                                 onRequestSafeHomeSwitch = {
@@ -454,7 +571,36 @@ private fun Win11DesktopRoot(
                                 onCheckGitHubUpdates = { viewModel.checkForGitHubUpdates() },
                                 onOpenGitHubRelease = { preferApk -> viewModel.openGitHubReleaseUrl(preferApk) },
                                 onStartInAppUpdate = { viewModel.startInAppUpdate() },
-                                onOpenPanelSelector = { showTaskbarPanelSelector = true }
+                                onOpenPanelSelector = { viewModel.openWindow(DesktopWindowType.TASKBAR_PANEL_SETTINGS) },
+                                onOpenWidgetPicker = { viewModel.openWidgetPicker() }
+                            )
+                            DesktopWindowType.TASKBAR_PANEL_SETTINGS -> Win11TaskbarPanelSettingsContent(
+                                preferences = prefs,
+                                onSetHideStatusBar = { viewModel.setHideSystemStatusBar(it) },
+                                onSetHideNavBar = { viewModel.setHideSystemNavBar(it) },
+                                onSetTaskbarAlignment = { viewModel.setTaskbarAlignment(it) },
+                                onSetTaskbarHeightDp = { viewModel.setTaskbarHeightDp(it) },
+                                onSetTaskbarStyle = { viewModel.setTaskbarStyle(it) },
+                                onSetTaskbarIconSize = { viewModel.setTaskbarIconSize(it) },
+                                onSetTaskbarOpacity = { viewModel.setTaskbarOpacity(it) },
+                                onSetTaskbarShowDivider = { viewModel.setTaskbarShowDivider(it) },
+                                onSetTaskbarShowActiveIndicator = { viewModel.setTaskbarShowActiveIndicator(it) },
+                                onSetTaskbarSearchMode = { viewModel.setTaskbarSearchMode(it) },
+                                onSetShowTaskView = { viewModel.setShowTaskViewInTaskbar(it) },
+                                onSetShowFileExplorer = { viewModel.setShowFileExplorerInTaskbar(it) },
+                                onSetShowPinnedApps = { viewModel.setShowPinnedAppsInTaskbar(it) },
+                                onSetShowHiddenTray = { viewModel.setShowHiddenTrayInTaskbar(it) },
+                                onSetShowTrayNetwork = { viewModel.setShowTrayNetwork(it) },
+                                onSetShowTrayVolume = { viewModel.setShowTrayVolume(it) },
+                                onSetShowTrayBattery = { viewModel.setShowTrayBattery(it) },
+                                onSetShowTrayBatteryPercent = { viewModel.setShowTrayBatteryPercent(it) },
+                                onSetShowTrayClock = { viewModel.setShowTrayClock(it) },
+                                onSetShowTrayDate = { viewModel.setShowTrayDate(it) },
+                                onSetShowTrayNotificationDot = { viewModel.setShowTrayNotificationDot(it) },
+                                onSet24HourClock = { viewModel.setUse24HourClock(it) },
+                                onSetShowSeconds = { viewModel.setShowSecondsInClock(it) },
+                                onSetShowDesktopButton = { viewModel.setShowDesktopButtonInTaskbar(it) },
+                                onResetTaskbarDefaults = { viewModel.resetTaskbarSettingsToDefault() }
                             )
                             DesktopWindowType.RECYCLE_BIN_APPS -> AppManagerWindowContent(
                                 apps = state.installedApps,
@@ -562,7 +708,8 @@ private fun Win11DesktopRoot(
                         },
                         onDisplaySettingsClick = { viewModel.openDisplaySettings() },
                         onOpenPersonalize = { viewModel.openWindow(DesktopWindowType.SETTINGS_PERSONALIZE) },
-                        onVolumeChange = { viewModel.setMediaVolume(it) }
+                        onVolumeChange = { viewModel.setMediaVolume(it) },
+                        onOpenTaskbarSettings = { viewModel.openWindow(DesktopWindowType.TASKBAR_PANEL_SETTINGS) }
                     )
                 }
 
@@ -609,7 +756,7 @@ private fun Win11DesktopRoot(
                     exit = fadeOut() + slideOutVertically { it / 2 },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 90.dp, bottom = 10.dp)
+                        .padding(end = 96.dp, bottom = 10.dp)
                 ) {
                     Win11HiddenTrayFlyout(
                         isFlashlightOn = state.telemetry.isFlashlightOn,
@@ -620,7 +767,9 @@ private fun Win11DesktopRoot(
                             viewModel.refreshInstalledApps()
                             viewModel.closeAllPanels()
                         },
-                        onOpenPersonalize = { viewModel.openWindow(DesktopWindowType.SETTINGS_PERSONALIZE) }
+                        onOpenPersonalize = { viewModel.openWindow(DesktopWindowType.SETTINGS_PERSONALIZE) },
+                        onOpenTaskbarSettings = { viewModel.openWindow(DesktopWindowType.TASKBAR_PANEL_SETTINGS) },
+                        onOpenWifiSettings = { viewModel.openWifiSettings() }
                     )
                 }
             }
@@ -647,7 +796,8 @@ private fun Win11DesktopRoot(
                 onPinnedAppClick = { viewModel.launchApp(it) },
                 onPinnedAppLongPress = { viewModel.showAppContextMenu(it) },
                 onWindowTaskbarClick = { viewModel.focusOrToggleWindowFromTaskbar(it) },
-                onTaskbarLongClick = { showTaskbarPanelSelector = true }
+                onTaskbarLongClick = { viewModel.openWindow(DesktopWindowType.TASKBAR_PANEL_SETTINGS) },
+                hasNotificationBadge = state.githubUpdateState.status == GitHubUpdateStatus.UPDATE_AVAILABLE
             )
         }
 
@@ -677,11 +827,24 @@ private fun Win11DesktopRoot(
                     }
                 },
                 fallbackHomeLabel = fallbackHomeApp?.label,
-                onSwitchToSystemHome = { viewModel.launchFallbackHomeLauncher(fallbackHomeApp) }
+                onSwitchToSystemHome = { viewModel.launchFallbackHomeLauncher(fallbackHomeApp) },
+                hasDesktopWidgets = prefs.desktopWidgets.isNotEmpty(),
+                onAddWidget = { viewModel.openWidgetPicker() },
+                onEditWidgets = { viewModel.startEditingWidget(null) }
             )
         }
 
-        // 5. Safe Default Home Chooser Dialog
+        // 5. Widget Picker Dialog
+        if (state.showWidgetPickerDialog) {
+            Win11WidgetPickerDialog(
+                availableWidgets = state.availableWidgets,
+                isLoading = state.isLoadingWidgets,
+                onSelectWidget = { viewModel.onWidgetPicked(it) },
+                onDismiss = { viewModel.dismissWidgetPicker() }
+            )
+        }
+
+        // 6. Safe Default Home Chooser Dialog
         if (state.showSafeHomeDialog) {
             SafeHomeChooserDialog(
                 status = state.homeLauncherStatus,
@@ -698,32 +861,6 @@ private fun Win11DesktopRoot(
             onRetryUpdate = { viewModel.startInAppUpdate() },
             onDismiss = { viewModel.dismissInAppUpdateStage() }
         )
-
-        // 6b. Taskbar Panel Selector Dialog (Long-press taskbar or Settings button)
-        if (showTaskbarPanelSelector) {
-            Win11TaskbarPanelSelectorDialog(
-                preferences = prefs,
-                onSetTaskbarAlignment = { viewModel.setTaskbarAlignment(it) },
-                onSetTaskbarStyle = { viewModel.setTaskbarStyle(it) },
-                onSetTaskbarSearchMode = { viewModel.setTaskbarSearchMode(it) },
-                onSetShowTaskView = { viewModel.setShowTaskViewInTaskbar(it) },
-                onSetShowFileExplorer = { viewModel.setShowFileExplorerInTaskbar(it) },
-                onSetShowPinnedApps = { viewModel.setShowPinnedAppsInTaskbar(it) },
-                onSetShowHiddenTray = { viewModel.setShowHiddenTrayInTaskbar(it) },
-                onSetShowTrayNetwork = { viewModel.setShowTrayNetwork(it) },
-                onSetShowTrayVolume = { viewModel.setShowTrayVolume(it) },
-                onSetShowTrayBattery = { viewModel.setShowTrayBattery(it) },
-                onSetShowTrayBatteryPercent = { viewModel.setShowTrayBatteryPercent(it) },
-                onSetShowTrayClock = { viewModel.setShowTrayClock(it) },
-                onSetShowTrayDate = { viewModel.setShowTrayDate(it) },
-                onSetShowTrayNotificationDot = { viewModel.setShowTrayNotificationDot(it) },
-                onSet24HourClock = { viewModel.setUse24HourClock(it) },
-                onSetShowSeconds = { viewModel.setShowSecondsInClock(it) },
-                onSetShowDesktopButton = { viewModel.setShowDesktopButtonInTaskbar(it) },
-                onResetTaskbarDefaults = { viewModel.resetTaskbarSettingsToDefault() },
-                onDismiss = { showTaskbarPanelSelector = false }
-            )
-        }
 
         // 7. Lock Screen Overlay
         AnimatedVisibility(

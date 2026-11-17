@@ -6,13 +6,16 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.BuildConfig
 import com.example.data.ApkInstallerManager
+import com.example.data.DesktopWidgetManager
 import com.example.data.GitHubUpdateRepository
 import com.example.data.LauncherPreferencesRepository
 import com.example.data.SystemRepository
 import com.example.model.ActivePanel
+import com.example.model.AppWidgetItem
 import com.example.model.ContextMenuRequest
 import com.example.model.DesktopIconSize
 import com.example.model.DesktopShortcut
+import com.example.model.DesktopWidget
 import com.example.model.DesktopWindowState
 import com.example.model.DesktopWindowType
 import com.example.model.GitHubUpdateState
@@ -62,8 +65,26 @@ data class LauncherUiState(
     val showSafeHomeDialog: Boolean = false,
     val homeLauncherStatus: HomeLauncherStatus = HomeLauncherStatus(),
     val githubUpdateState: GitHubUpdateState = GitHubUpdateState(currentVersion = BuildConfig.VERSION_NAME),
-    val toastMessage: String? = null
+    val toastMessage: String? = null,
+    val showWidgetPickerDialog: Boolean = false,
+    val availableWidgets: List<AppWidgetItem> = emptyList(),
+    val isLoadingWidgets: Boolean = false,
+    val editingWidgetId: Int? = null
 )
+
+sealed interface PendingWidgetAction {
+    data class BindPermission(
+        val appWidgetId: Int,
+        val item: AppWidgetItem,
+        val intent: Intent
+    ) : PendingWidgetAction
+
+    data class Configure(
+        val appWidgetId: Int,
+        val item: AppWidgetItem,
+        val deleteOnCancel: Boolean
+    ) : PendingWidgetAction
+}
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -71,6 +92,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val systemRepo = SystemRepository(application)
     private val githubUpdateRepo = GitHubUpdateRepository()
     private val apkInstaller = ApkInstallerManager(application)
+    val widgetManager = DesktopWidgetManager(application)
 
     private val installedAppsFlow = MutableStateFlow<List<InstalledApp>>(emptyList())
     private val isLoadingAppsFlow = MutableStateFlow(true)
@@ -81,6 +103,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     )
     private val _installPromptIntent = MutableStateFlow<Intent?>(null)
     val installPromptIntent: StateFlow<Intent?> = _installPromptIntent
+
+    private val _pendingWidgetAction = MutableStateFlow<PendingWidgetAction?>(null)
+    val pendingWidgetAction: StateFlow<PendingWidgetAction?> = _pendingWidgetAction
+
+    private val availableWidgetsFlow = MutableStateFlow<List<AppWidgetItem>>(emptyList())
+    private val isLoadingWidgetsFlow = MutableStateFlow(false)
 
     private val uiInteractionFlow = MutableStateFlow(InteractionState())
 
@@ -95,7 +123,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val isLocked: Boolean = false,
         val contextMenu: ContextMenuRequest? = null,
         val showSafeHomeDialog: Boolean = false,
-        val toastMessage: String? = null
+        val toastMessage: String? = null,
+        val showWidgetPickerDialog: Boolean = false,
+        val editingWidgetId: Int? = null
     )
 
     private val clockFlow: StateFlow<Long> = flow {
@@ -115,6 +145,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         clockFlow,
         homeStatusFlow,
         githubUpdateFlow,
+        availableWidgetsFlow,
+        isLoadingWidgetsFlow,
         uiInteractionFlow
     ) { values ->
         val prefs = values[0] as LauncherPreferences
@@ -125,7 +157,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val timeMillis = values[4] as Long
         val homeStatus = values[5] as HomeLauncherStatus
         val updateState = values[6] as GitHubUpdateState
-        val interaction = values[7] as InteractionState
+        @Suppress("UNCHECKED_CAST")
+        val widgets = values[7] as List<AppWidgetItem>
+        val isLoadingWidgets = values[8] as Boolean
+        val interaction = values[9] as InteractionState
 
         val appByPkg = apps.associateBy { it.packageName }
 
@@ -164,7 +199,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             showSafeHomeDialog = interaction.showSafeHomeDialog,
             homeLauncherStatus = homeStatus,
             githubUpdateState = updateState,
-            toastMessage = interaction.toastMessage
+            toastMessage = interaction.toastMessage,
+            showWidgetPickerDialog = interaction.showWidgetPickerDialog,
+            availableWidgets = widgets,
+            isLoadingWidgets = isLoadingWidgets,
+            editingWidgetId = interaction.editingWidgetId
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LauncherUiState())
 
@@ -346,7 +385,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 activePanel = ActivePanel.NONE,
                 showPowerMenu = false,
                 contextMenu = null,
-                selectedShortcutId = null
+                selectedShortcutId = null,
+                editingWidgetId = null
             )
         }
     }
@@ -682,6 +722,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { prefsRepo.setHideSystemStatusBar(hide) }
     }
 
+    fun setHideSystemNavBar(hide: Boolean) {
+        viewModelScope.launch { prefsRepo.setHideSystemNavBar(hide) }
+    }
+
     fun setUserName(name: String) {
         viewModelScope.launch { prefsRepo.setUserName(name) }
     }
@@ -979,6 +1023,179 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun openStorageSettings() = systemRepo.openStorageSettings()
     fun openSystemSettings() = systemRepo.openSystemSettings()
     fun openDocumentFolder(mimeType: String) = systemRepo.openDocumentFolder(mimeType)
+
+    fun openWidgetPicker() {
+        uiInteractionFlow.update {
+            it.copy(
+                showWidgetPickerDialog = true,
+                activePanel = ActivePanel.NONE,
+                contextMenu = null
+            )
+        }
+        viewModelScope.launch {
+            isLoadingWidgetsFlow.value = true
+            availableWidgetsFlow.value = widgetManager.loadAvailableAppWidgets()
+            isLoadingWidgetsFlow.value = false
+        }
+    }
+
+    fun dismissWidgetPicker() {
+        uiInteractionFlow.update { it.copy(showWidgetPickerDialog = false) }
+    }
+
+    fun onWidgetPicked(item: AppWidgetItem) {
+        dismissWidgetPicker()
+        val info = item.providerInfo ?: widgetManager.findProviderInfo(item.providerPackage, item.providerClass)
+        if (info == null) {
+            showToast("Widget tidak tersedia di perangkat")
+            return
+        }
+        val appWidgetId = widgetManager.allocateAppWidgetId()
+        if (appWidgetId < 0) {
+            showToast("Gagal mengalokasikan ID widget")
+            return
+        }
+        val allowed = widgetManager.bindAppWidgetIfAllowed(appWidgetId, info)
+        if (allowed) {
+            proceedAfterWidgetBound(appWidgetId, item, info)
+        } else {
+            val intent = widgetManager.createBindIntent(
+                appWidgetId = appWidgetId,
+                info = info,
+                widthDp = item.defaultWidthDp,
+                heightDp = item.defaultHeightDp
+            )
+            _pendingWidgetAction.value = PendingWidgetAction.BindPermission(appWidgetId, item, intent)
+        }
+    }
+
+    fun onBindPermissionResult(granted: Boolean, appWidgetId: Int, item: AppWidgetItem) {
+        if (!granted) {
+            widgetManager.deleteAppWidgetId(appWidgetId)
+            showToast("Izin pemasangan widget dibatalkan")
+            return
+        }
+        val info = item.providerInfo ?: widgetManager.findProviderInfo(item.providerPackage, item.providerClass)
+        if (info == null) {
+            widgetManager.deleteAppWidgetId(appWidgetId)
+            return
+        }
+        proceedAfterWidgetBound(appWidgetId, item, info)
+    }
+
+    private fun proceedAfterWidgetBound(
+        appWidgetId: Int,
+        item: AppWidgetItem,
+        info: android.appwidget.AppWidgetProviderInfo
+    ) {
+        if (widgetManager.needsInitialConfiguration(info)) {
+            _pendingWidgetAction.value = PendingWidgetAction.Configure(
+                appWidgetId = appWidgetId,
+                item = item,
+                deleteOnCancel = true
+            )
+        } else {
+            commitNewDesktopWidget(appWidgetId, item)
+        }
+    }
+
+    fun onConfigureWidgetResult(ok: Boolean, appWidgetId: Int, item: AppWidgetItem, deleteOnCancel: Boolean) {
+        if (!ok) {
+            if (deleteOnCancel) {
+                widgetManager.deleteAppWidgetId(appWidgetId)
+                showToast("Konfigurasi widget dibatalkan")
+            }
+            return
+        }
+        if (deleteOnCancel) {
+            commitNewDesktopWidget(appWidgetId, item)
+        }
+    }
+
+    private fun commitNewDesktopWidget(appWidgetId: Int, item: AppWidgetItem) {
+        val count = uiState.value.preferences.desktopWidgets.size
+        val startX = 108f + (count % 3) * 24f
+        val startY = 20f + (count % 4) * 28f
+        val widget = DesktopWidget(
+            appWidgetId = appWidgetId,
+            providerPackage = item.providerPackage,
+            providerClass = item.providerClass,
+            label = item.widgetLabel,
+            xDp = startX,
+            yDp = startY,
+            widthDp = item.defaultWidthDp,
+            heightDp = item.defaultHeightDp,
+            minWidthDp = item.minWidthDp,
+            minHeightDp = item.minHeightDp
+        )
+        viewModelScope.launch {
+            prefsRepo.addDesktopWidget(widget)
+            uiInteractionFlow.update { it.copy(editingWidgetId = appWidgetId) }
+            showToast("Widget ditambahkan — seret tepi/sudut untuk ubah ukuran")
+        }
+    }
+
+    fun reconfigureDesktopWidget(widget: DesktopWidget) {
+        val item = AppWidgetItem(
+            providerPackage = widget.providerPackage,
+            providerClass = widget.providerClass,
+            appName = widget.label,
+            widgetLabel = widget.label,
+            defaultWidthDp = widget.widthDp,
+            defaultHeightDp = widget.heightDp,
+            minWidthDp = widget.minWidthDp,
+            minHeightDp = widget.minHeightDp
+        )
+        _pendingWidgetAction.value = PendingWidgetAction.Configure(
+            appWidgetId = widget.appWidgetId,
+            item = item,
+            deleteOnCancel = false
+        )
+    }
+
+    fun clearPendingWidgetAction() {
+        _pendingWidgetAction.value = null
+    }
+
+    fun startEditingWidget(appWidgetId: Int?) {
+        val resolvedId = appWidgetId ?: uiState.value.preferences.desktopWidgets.lastOrNull()?.appWidgetId
+        uiInteractionFlow.update {
+            it.copy(
+                editingWidgetId = resolvedId,
+                activePanel = ActivePanel.NONE,
+                contextMenu = null
+            )
+        }
+    }
+
+    fun stopEditingWidget() {
+        uiInteractionFlow.update { it.copy(editingWidgetId = null) }
+    }
+
+    fun updateWidgetBounds(
+        appWidgetId: Int,
+        xDp: Float,
+        yDp: Float,
+        widthDp: Float,
+        heightDp: Float
+    ) {
+        viewModelScope.launch {
+            prefsRepo.updateDesktopWidgetBounds(appWidgetId, xDp, yDp, widthDp, heightDp)
+        }
+    }
+
+    fun removeDesktopWidget(appWidgetId: Int) {
+        widgetManager.deleteAppWidgetId(appWidgetId)
+        viewModelScope.launch {
+            prefsRepo.removeDesktopWidget(appWidgetId)
+            uiInteractionFlow.update { current ->
+                if (current.editingWidgetId == appWidgetId) {
+                    current.copy(editingWidgetId = null)
+                } else current
+            }
+            showToast("Widget dihapus dari desktop")
+        }
+    }
 
     fun showToast(message: String) {
         uiInteractionFlow.update { it.copy(toastMessage = message) }

@@ -4,6 +4,39 @@ Semua perubahan penting pada proyek **Win11 Launcher** didokumentasikan di file 
 
 Format changelog mengacu pada [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/) dan penomoran versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.0.3] - 2026-11-17
+
+### Added
+- **Widget Aplikasi Desktop yang Dapat Diubah Ukurannya (`DesktopWidgetManager`, `Win11DesktopWidgets`)**
+  - Dukungan penuh `AppWidgetHost` untuk menampilkan widget asli dari aplikasi Android yang terpasang di layar desktop (*long-press desktop → Tambah Widget Aplikasi* atau melalui *Settings → Personalize → Tambah Widget Aplikasi ke Desktop...*).
+  - Mode atur & ubah ukuran interaktif (tekan tahan widget atau ketuk tombol ikon atur di pojok kanan atas widget): seret bebas untuk memindahkan posisi di desktop, ubah ukuran dari tepi kanan, tepi bawah, sudut kiri-bawah, dan sudut kanan-bawah (*live option updates* ke `AppWidgetHostView`), konfigurasi ulang widget (*reconfigure*), serta hapus widget — seluruh posisi dan ukuran tersimpan otomatis di DataStore.
+- **Redesain System Tray & Flyout Gaya Windows 11 (`Win11Icons`, `Win11Taskbar`, `Win11Flyouts`)**
+  - Ikon Tray Fluent vektor kustom (*baterai horizontal + ikon pengisian*, *speaker volume bertingkat gelombang suara / mute*, *status Wi-Fi / seluler / globe terputus*, *lonceng notifikasi & dot aksen*).
+  - Peningkatan **Quick Settings Flyout** (*split tiles* gaya Win11, slider volume, tombol *Edit/Atur Tray*), **Calendar & Notifications Flyout** (*Notification Center + kalender yang dapat dilipat*), serta **Hidden Tray Overflow Flyout**.
+- **Pengaturan NavBar & Jendela Floating Taskbar/Panel (`TASKBAR_PANEL_SETTINGS`)**
+  - Opsi menyembunyikan Navigation Bar sistem (`hideSystemNavBar`) bersama Status Bar, serta konversi panel pengaturan taskbar menjadi jendela *floating* yang dapat digeser dan diubah ukurannya.
+- **Build Release APK v1.0.3**
+  - Rilis APK v1.0.3 (`versionCode = 4`) bertanda tangan kunci rilis yang konsisten untuk mendukung pembaruan timpa langsung.
+
+### Chores
+- Menambahkan aturan `*.bin` ke `.gitignore` agar file biner rilis lokal tidak ikut ter-push ke GitHub.
+
+## [1.0.2] - 2026-11-17
+
+### Added
+- **Pemilih Panel Taskbar Mandiri (`Win11TaskbarPanelSelectorDialog`)**
+  - Penambahan dialog cepat **Pilih Panel & Item Taskbar** agar pengguna dapat mengaktifkan/menyembunyikan tiap panel secara terpisah (*Gaya Docked/Floating*, *Posisi Center/Left*, *Panel Search*, *Task View*, *File Explorer*, *Pinned Apps*, *Show Desktop*, *Hidden Tray*, *Wi-Fi/Jaringan*, *Volume*, *Baterai & %*, *Jam*, *Tanggal*, *Titik Notifikasi*, *Format 24-Jam*, *Detik*, serta tombol **Reset**).
+  - Dapat dibuka langsung dengan **tekan tahan (*long-press*) pada taskbar** maupun melalui tombol **Pilih & Atur Panel Taskbar Sendiri...** di **Settings → Personalize**.
+- **Build Release APK v1.0.2**
+  - Rilis APK v1.0.2 (`versionCode = 3`) dengan tanda tangan yang sama untuk mendukung *instal timpa* tanpa uninstall.
+
+### Fixed
+- **Download Update & Timeout Resilience**
+  - Memperpanjang batas waktu koneksi (30 detik) dan pembacaan stream (120 detik) serta menambahkan mekanisme *auto-retry* (hingga 3 kali percobaan) saat mengunduh APK update dari GitHub untuk mencegah error *timeout* / *download failed*.
+- **Gestur Long-Press Taskbar & Stabilitas UI**
+  - Menggunakan `pointerInput` (`detectTapGestures`) untuk gestur *long-press* pada taskbar sehingga tidak membungkus komponen anak dalam semantics klik dan menjaga visibilitas *System Tray* tetap stabil.
+  - Memperbaiki kontras teks/ikon tombol selector di *Personalize* dan kelancaran scroll dialog pemilih panel.
+
 ## [1.0.1] - 2026-11-16
 
 ### Added
@@ -14,11 +47,8 @@ Format changelog mengacu pada [Keep a Changelog](https://keepachangelog.com/id-I
   - Pengaturan **Opasitas Taskbar** (45% – 100%) dan **Ukuran Ikon** (*Small*, *Medium*, *Large*).
   - Toggle visibilitas komponen utama taskbar: Tombol *Search Mode* (*Auto*, *Icon*, *Search Box*, *Hidden*), *Task View*, *File Explorer*, *Pinned Apps*, dan tombol *Show Desktop*.
   - Toggle visibilitas individual komponen *System Tray*: Panah *Hidden Icons* (`^`), Indikator Wi-Fi/Jaringan, Ikon Volume, Ikon Baterai, Persentase Baterai (%), Jam & Tanggal, format 24 Jam, Detik, Titik Notifikasi, serta tombol Reset ke Default.
-  - Penambahan dialog cepat **Pilih Panel & Item Taskbar** (`Win11TaskbarPanelSelectorDialog`) yang dapat dibuka langsung dengan **tahan lama (long-press) pada area kosong taskbar** atau lewat tombol di **Settings → Personalize**.
 - **Pembaruan UI Taskbar**
   - Menghapus tombol Widget di sisi kiri taskbar demi kebersihan layout desktop.
-- **Perbaikan Download Update & Timeout Resilience**
-  - Memperpanjang batas waktu koneksi (30 detik) dan pembacaan stream (120 detik) serta menambahkan mekanisme *auto-retry* (hingga 3 kali percobaan) pada proses unduhan in-app update APK untuk mencegah kendala *timeout* atau *download failed*.
 - **Build Release APK v1.0.1**
   - Berhasil membangun dan memvalidasi rilis APK v1.0.1 (`versionCode = 2`) dengan tanda tangan kompatibel untuk *instal timpa*.
 

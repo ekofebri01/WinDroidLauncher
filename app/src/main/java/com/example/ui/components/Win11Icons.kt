@@ -300,6 +300,301 @@ fun Win11TaskViewIcon(modifier: Modifier = Modifier, size: Dp = 22.dp, tint: Col
 }
 
 @Composable
+fun Win11TrayBatteryIcon(
+    percent: Int,
+    isCharging: Boolean,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 18.dp
+) {
+    val clamped = percent.coerceIn(0, 100)
+    val fillColor = when {
+        isCharging -> Color(0xFF4CD4A9)
+        clamped <= 15 -> Color(0xFFFF6B6B)
+        clamped <= 25 -> Color(0xFFF59E0B)
+        else -> tint
+    }
+    Canvas(modifier = modifier.size(width = size * 1.25f, height = size * 0.78f)) {
+        val w = this.size.width
+        val h = this.size.height
+        val strokeW = (h * 0.11f).coerceAtLeast(1.4f)
+        val bodyW = w * 0.84f
+        val bodyH = h * 0.84f
+        val topY = (h - bodyH) / 2f
+
+        // Outer horizontal battery shell
+        drawRoundRect(
+            color = tint.copy(alpha = 0.9f),
+            topLeft = Offset(strokeW / 2f, topY),
+            size = Size(bodyW - strokeW, bodyH),
+            cornerRadius = CornerRadius(h * 0.20f, h * 0.20f),
+            style = Stroke(width = strokeW)
+        )
+
+        // Right positive terminal nub
+        drawRoundRect(
+            color = tint.copy(alpha = 0.85f),
+            topLeft = Offset(bodyW + w * 0.02f, h * 0.31f),
+            size = Size(w * 0.09f, h * 0.38f),
+            cornerRadius = CornerRadius(h * 0.10f, h * 0.10f)
+        )
+
+        // Inner charge level bar
+        val pad = strokeW * 1.65f
+        val maxInnerW = (bodyW - strokeW - pad * 2f).coerceAtLeast(2f)
+        val innerW = (maxInnerW * (clamped / 100f)).coerceAtLeast(if (clamped > 0) 2.5f else 0f)
+        val innerH = (bodyH - pad * 2f).coerceAtLeast(2f)
+        if (innerW > 0f) {
+            drawRoundRect(
+                color = fillColor,
+                topLeft = Offset(strokeW / 2f + pad, topY + pad),
+                size = Size(innerW, innerH),
+                cornerRadius = CornerRadius(h * 0.09f, h * 0.09f)
+            )
+        }
+
+        // Small charging lightning bolt overlay
+        if (isCharging) {
+            val bolt = Path().apply {
+                moveTo(w * 0.48f, h * 0.10f)
+                lineTo(w * 0.33f, h * 0.54f)
+                lineTo(w * 0.45f, h * 0.54f)
+                lineTo(w * 0.38f, h * 0.92f)
+                lineTo(w * 0.57f, h * 0.46f)
+                lineTo(w * 0.45f, h * 0.46f)
+                close()
+            }
+            drawPath(bolt, color = Color(0xFF0E1722))
+            drawPath(bolt, color = Color.White, style = Stroke(width = strokeW * 0.45f))
+        }
+    }
+}
+
+@Composable
+fun Win11TrayVolumeIcon(
+    volume: Int,
+    maxVolume: Int,
+    isMuted: Boolean,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 16.dp
+) {
+    val ratio = if (isMuted || maxVolume <= 0) 0f else (volume.toFloat() / maxVolume.toFloat()).coerceIn(0f, 1f)
+    Canvas(modifier = modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val strokeW = (w * 0.095f).coerceAtLeast(1.4f)
+
+        // Speaker cone
+        val speaker = Path().apply {
+            moveTo(w * 0.10f, h * 0.38f)
+            lineTo(w * 0.28f, h * 0.38f)
+            lineTo(w * 0.50f, h * 0.19f)
+            lineTo(w * 0.50f, h * 0.81f)
+            lineTo(w * 0.28f, h * 0.62f)
+            lineTo(w * 0.10f, h * 0.62f)
+            close()
+        }
+        drawPath(speaker, color = tint)
+
+        if (isMuted || ratio <= 0.01f) {
+            // Muted X
+            drawLine(
+                color = Color(0xFFFF6B6B),
+                start = Offset(w * 0.64f, h * 0.36f),
+                end = Offset(w * 0.90f, h * 0.64f),
+                strokeWidth = strokeW * 1.15f,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color(0xFFFF6B6B),
+                start = Offset(w * 0.90f, h * 0.36f),
+                end = Offset(w * 0.64f, h * 0.64f),
+                strokeWidth = strokeW * 1.15f,
+                cap = StrokeCap.Round
+            )
+        } else {
+            // 1st sound wave
+            drawArc(
+                color = tint,
+                startAngle = -45f,
+                sweepAngle = 90f,
+                useCenter = false,
+                topLeft = Offset(w * 0.44f, h * 0.31f),
+                size = Size(w * 0.24f, h * 0.38f),
+                style = Stroke(width = strokeW, cap = StrokeCap.Round)
+            )
+            // 2nd sound wave
+            if (ratio > 0.33f) {
+                drawArc(
+                    color = tint.copy(alpha = 0.9f),
+                    startAngle = -52f,
+                    sweepAngle = 104f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.48f, h * 0.20f),
+                    size = Size(w * 0.34f, h * 0.60f),
+                    style = Stroke(width = strokeW, cap = StrokeCap.Round)
+                )
+            }
+            // 3rd sound wave
+            if (ratio > 0.68f) {
+                drawArc(
+                    color = tint.copy(alpha = 0.8f),
+                    startAngle = -56f,
+                    sweepAngle = 112f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.52f, h * 0.10f),
+                    size = Size(w * 0.42f, h * 0.80f),
+                    style = Stroke(width = strokeW, cap = StrokeCap.Round)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun Win11TrayWifiIcon(
+    isWifiConnected: Boolean,
+    isCellularConnected: Boolean,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 16.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val strokeW = (w * 0.105f).coerceAtLeast(1.4f)
+
+        if (isWifiConnected) {
+            // Windows 11 crisp 3-arc Wi-Fi + bottom dot
+            drawCircle(
+                color = tint,
+                radius = w * 0.085f,
+                center = Offset(w * 0.50f, h * 0.80f)
+            )
+            drawArc(
+                color = tint,
+                startAngle = 225f,
+                sweepAngle = 90f,
+                useCenter = false,
+                topLeft = Offset(w * 0.29f, h * 0.50f),
+                size = Size(w * 0.42f, h * 0.44f),
+                style = Stroke(width = strokeW, cap = StrokeCap.Round)
+            )
+            drawArc(
+                color = tint,
+                startAngle = 222f,
+                sweepAngle = 96f,
+                useCenter = false,
+                topLeft = Offset(w * 0.16f, h * 0.33f),
+                size = Size(w * 0.68f, h * 0.70f),
+                style = Stroke(width = strokeW, cap = StrokeCap.Round)
+            )
+            drawArc(
+                color = tint,
+                startAngle = 218f,
+                sweepAngle = 104f,
+                useCenter = false,
+                topLeft = Offset(w * 0.04f, h * 0.16f),
+                size = Size(w * 0.92f, h * 0.96f),
+                style = Stroke(width = strokeW, cap = StrokeCap.Round)
+            )
+        } else if (isCellularConnected) {
+            // Crisp ascending signal bars
+            val barW = w * 0.15f
+            val heights = listOf(0.28f, 0.48f, 0.68f, 0.86f)
+            heights.forEachIndexed { idx, hf ->
+                val x = w * (0.10f + idx * 0.22f)
+                val bh = h * hf
+                drawRoundRect(
+                    color = tint,
+                    topLeft = Offset(x, h * 0.90f - bh),
+                    size = Size(barW, bh),
+                    cornerRadius = CornerRadius(barW * 0.35f, barW * 0.35f)
+                )
+            }
+        } else {
+            // Windows 11 disconnected globe wireframe
+            val r = w * 0.36f
+            val cx = w * 0.5f
+            val cy = h * 0.5f
+            drawCircle(
+                color = tint.copy(alpha = 0.75f),
+                radius = r,
+                center = Offset(cx, cy),
+                style = Stroke(width = strokeW)
+            )
+            drawOval(
+                color = tint.copy(alpha = 0.75f),
+                topLeft = Offset(cx - r * 0.48f, cy - r),
+                size = Size(r * 0.96f, r * 2f),
+                style = Stroke(width = strokeW * 0.85f)
+            )
+            drawLine(
+                color = tint.copy(alpha = 0.75f),
+                start = Offset(cx - r, cy),
+                end = Offset(cx + r, cy),
+                strokeWidth = strokeW * 0.85f
+            )
+            // Small red/amber slash badge
+            drawCircle(
+                color = Color(0xFFFF6B6B),
+                radius = w * 0.16f,
+                center = Offset(w * 0.80f, h * 0.78f)
+            )
+        }
+    }
+}
+
+@Composable
+fun Win11NotificationBellIcon(
+    hasBadge: Boolean,
+    tint: Color,
+    badgeColor: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 15.dp
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val strokeW = (w * 0.095f).coerceAtLeast(1.3f)
+
+        val bell = Path().apply {
+            moveTo(w * 0.50f, h * 0.14f)
+            cubicTo(w * 0.30f, h * 0.14f, w * 0.24f, h * 0.32f, w * 0.24f, h * 0.52f)
+            lineTo(w * 0.16f, h * 0.72f)
+            lineTo(w * 0.84f, h * 0.72f)
+            lineTo(w * 0.76f, h * 0.52f)
+            cubicTo(w * 0.76f, h * 0.32f, w * 0.70f, h * 0.14f, w * 0.50f, h * 0.14f)
+            close()
+        }
+        if (hasBadge) {
+            drawPath(bell, color = tint.copy(alpha = 0.18f))
+        }
+        drawPath(bell, color = tint, style = Stroke(width = strokeW))
+
+        // Clapper arc at bottom
+        drawArc(
+            color = tint,
+            startAngle = 10f,
+            sweepAngle = 160f,
+            useCenter = false,
+            topLeft = Offset(w * 0.38f, h * 0.70f),
+            size = Size(w * 0.24f, h * 0.18f),
+            style = Stroke(width = strokeW, cap = StrokeCap.Round)
+        )
+
+        if (hasBadge) {
+            drawCircle(
+                color = badgeColor,
+                radius = w * 0.17f,
+                center = Offset(w * 0.78f, h * 0.24f)
+            )
+        }
+    }
+}
+
+@Composable
 fun AppIconImage(
     app: InstalledApp,
     size: Dp,
@@ -360,6 +655,7 @@ fun WindowTypeIconView(
         DesktopWindowType.THIS_PC -> Win11ThisPcIcon(modifier = modifier, size = size)
         DesktopWindowType.USER_FILES -> Win11FolderIcon(modifier = modifier, size = size)
         DesktopWindowType.SETTINGS_PERSONALIZE -> Win11SettingsIcon(modifier = modifier, size = size)
+        DesktopWindowType.TASKBAR_PANEL_SETTINGS -> Win11SettingsIcon(modifier = modifier, size = size)
         DesktopWindowType.RECYCLE_BIN_APPS -> Win11RecycleBinIcon(modifier = modifier, size = size)
     }
 }

@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,19 +26,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.VolumeOff
-import androidx.compose.material.icons.automirrored.rounded.VolumeUp
-import androidx.compose.material.icons.rounded.Battery1Bar
-import androidx.compose.material.icons.rounded.Battery3Bar
-import androidx.compose.material.icons.rounded.Battery5Bar
-import androidx.compose.material.icons.rounded.BatteryAlert
-import androidx.compose.material.icons.rounded.BatteryChargingFull
-import androidx.compose.material.icons.rounded.BatteryFull
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.SignalCellularAlt
-import androidx.compose.material.icons.rounded.Wifi
-import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -91,6 +82,7 @@ fun Win11Taskbar(
     onPinnedAppLongPress: (InstalledApp) -> Unit,
     onWindowTaskbarClick: (DesktopWindowType) -> Unit,
     onTaskbarLongClick: () -> Unit = {},
+    hasNotificationBadge: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val winColors = LocalWin11Colors.current
@@ -111,11 +103,13 @@ fun Win11Taskbar(
     val showIndicator = preferences.taskbarShowActiveIndicator
     val barBg = winColors.acrylicTaskbar.copy(alpha = preferences.taskbarOpacity.coerceIn(0.45f, 1.0f))
 
+    val navPaddingModifier = if (preferences.hideSystemNavBar) Modifier else Modifier.navigationBarsPadding()
+
     val outerModifier = if (isFloating) {
         val floatingShape = RoundedCornerShape(16.dp)
         modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
+            .then(navPaddingModifier)
             .padding(horizontal = 10.dp, vertical = 6.dp)
             .clip(floatingShape)
             .background(barBg)
@@ -128,7 +122,7 @@ fun Win11Taskbar(
         modifier
             .fillMaxWidth()
             .background(barBg)
-            .navigationBarsPadding()
+            .then(navPaddingModifier)
             .pointerInput(onTaskbarLongClick) {
                 detectTapGestures(onLongPress = { onTaskbarLongClick() })
             }
@@ -311,7 +305,7 @@ fun Win11Taskbar(
                     }
                 }
 
-                // Right: Customizable Windows 11 System Tray
+                // Right: Authentic Windows 11 System Tray
                 val hasQuickTrayItems = preferences.showTrayNetwork ||
                     preferences.showTrayVolume ||
                     preferences.showTrayBattery
@@ -321,19 +315,53 @@ fun Win11Taskbar(
                     preferences.showDesktopButtonInTaskbar
 
                 if (hasAnyTrayContent) {
+                    val traySpacing = if (isCompact) 1.dp else 3.dp
+                    val pillCorner = RoundedCornerShape(6.dp)
+                    val chevronRotation by animateFloatAsState(
+                        targetValue = if (activePanel == ActivePanel.HIDDEN_TRAY) 180f else 0f,
+                        label = "tray_chevron_rotation"
+                    )
+                    val hiddenTrayBg by animateColorAsState(
+                        targetValue = if (activePanel == ActivePanel.HIDDEN_TRAY) {
+                            winColors.cardHover.copy(alpha = 0.92f)
+                        } else {
+                            Color.Transparent
+                        },
+                        label = "tray_hidden_bg"
+                    )
+                    val quickPillBg by animateColorAsState(
+                        targetValue = if (activePanel == ActivePanel.QUICK_SETTINGS) {
+                            winColors.cardHover.copy(alpha = 0.92f)
+                        } else {
+                            Color.Transparent
+                        },
+                        label = "tray_quick_bg"
+                    )
+                    val clockPillBg by animateColorAsState(
+                        targetValue = if (activePanel == ActivePanel.CALENDAR_NOTIFICATIONS) {
+                            winColors.cardHover.copy(alpha = 0.92f)
+                        } else {
+                            Color.Transparent
+                        },
+                        label = "tray_clock_bg"
+                    )
+
                     Row(
                         modifier = Modifier.testTag("win11_system_tray"),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        horizontalArrangement = Arrangement.spacedBy(traySpacing)
                     ) {
-                        if (preferences.showHiddenTrayInTaskbar && !isCompact) {
+                        // 1. Show Hidden Icons Chevron (^)
+                        if (preferences.showHiddenTrayInTaskbar) {
                             Box(
                                 modifier = Modifier
-                                    .size(width = 28.dp, height = tileHeight)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(
-                                        if (activePanel == ActivePanel.HIDDEN_TRAY) winColors.cardHover
-                                        else Color.Transparent
+                                    .size(width = if (isCompact) 24.dp else 28.dp, height = tileHeight)
+                                    .clip(pillCorner)
+                                    .background(hiddenTrayBg)
+                                    .then(
+                                        if (activePanel == ActivePanel.HIDDEN_TRAY) {
+                                            Modifier.border(1.dp, winColors.subtleBorder, pillCorner)
+                                        } else Modifier
                                     )
                                     .clickable(onClick = onHiddenTrayClick)
                                     .testTag("tray_hidden_icons_button"),
@@ -343,85 +371,72 @@ fun Win11Taskbar(
                                     imageVector = Icons.Rounded.KeyboardArrowUp,
                                     contentDescription = "Show hidden icons",
                                     tint = winColors.textPrimary,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .graphicsLayer { rotationZ = chevronRotation }
                                 )
                             }
                         }
 
-                        // Quick Settings Pill: Wi-Fi + Volume + Battery
+                        // 2. Unified Quick Settings Pill (Wi-Fi / Volume / Battery)
                         if (hasQuickTrayItems) {
                             Row(
                                 modifier = Modifier
                                     .height(tileHeight)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(
-                                        if (activePanel == ActivePanel.QUICK_SETTINGS) winColors.cardHover
-                                        else Color.Transparent
+                                    .clip(pillCorner)
+                                    .background(quickPillBg)
+                                    .then(
+                                        if (activePanel == ActivePanel.QUICK_SETTINGS) {
+                                            Modifier.border(1.dp, winColors.subtleBorder, pillCorner)
+                                        } else Modifier
                                     )
                                     .clickable(onClick = onQuickSettingsClick)
-                                    .padding(horizontal = 6.dp)
+                                    .padding(horizontal = if (isCompact) 6.dp else 8.dp)
                                     .testTag("tray_quick_settings_button"),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)
                             ) {
                                 if (preferences.showTrayNetwork) {
-                                    val netIcon = when {
-                                        telemetry.isWifiConnected -> Icons.Rounded.Wifi
-                                        telemetry.isCellularConnected -> Icons.Rounded.SignalCellularAlt
-                                        else -> Icons.Rounded.WifiOff
-                                    }
-                                    Icon(
-                                        imageVector = netIcon,
-                                        contentDescription = telemetry.networkLabel,
+                                    Win11TrayWifiIcon(
+                                        isWifiConnected = telemetry.isWifiConnected,
+                                        isCellularConnected = telemetry.isCellularConnected,
                                         tint = winColors.textPrimary,
-                                        modifier = Modifier
-                                            .size(15.dp)
-                                            .testTag("tray_wifi_indicator")
+                                        size = 15.dp,
+                                        modifier = Modifier.testTag("tray_wifi_indicator")
                                     )
                                 }
-                                if (preferences.showTrayVolume && !isCompact) {
-                                    Icon(
-                                        imageVector = if (telemetry.isMuted) Icons.AutoMirrored.Rounded.VolumeOff
-                                        else Icons.AutoMirrored.Rounded.VolumeUp,
-                                        contentDescription = "Volume",
+                                if (preferences.showTrayVolume) {
+                                    Win11TrayVolumeIcon(
+                                        volume = telemetry.mediaVolume,
+                                        maxVolume = telemetry.maxMediaVolume,
+                                        isMuted = telemetry.isMuted,
                                         tint = winColors.textPrimary,
-                                        modifier = Modifier
-                                            .size(15.dp)
-                                            .testTag("tray_volume_indicator")
+                                        size = 15.dp,
+                                        modifier = Modifier.testTag("tray_volume_indicator")
                                     )
                                 }
                                 if (preferences.showTrayBattery) {
-                                    val batteryIcon = when {
-                                        telemetry.isCharging -> Icons.Rounded.BatteryChargingFull
-                                        telemetry.batteryPercent <= 15 -> Icons.Rounded.BatteryAlert
-                                        telemetry.batteryPercent <= 35 -> Icons.Rounded.Battery1Bar
-                                        telemetry.batteryPercent <= 65 -> Icons.Rounded.Battery3Bar
-                                        telemetry.batteryPercent <= 88 -> Icons.Rounded.Battery5Bar
-                                        else -> Icons.Rounded.BatteryFull
-                                    }
                                     Row(
                                         modifier = Modifier.testTag("tray_battery_status"),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = batteryIcon,
-                                            contentDescription = "Battery ${telemetry.batteryPercent}%",
-                                            tint = if (telemetry.batteryPercent <= 15 && !telemetry.isCharging) {
-                                                Color(0xFFFF6B6B)
-                                            } else {
-                                                winColors.textPrimary
-                                            },
-                                            modifier = Modifier.size(15.dp)
+                                        Win11TrayBatteryIcon(
+                                            percent = telemetry.batteryPercent,
+                                            isCharging = telemetry.isCharging,
+                                            tint = winColors.textPrimary,
+                                            size = 15.dp
                                         )
                                         if (preferences.showTrayBatteryPercent) {
                                             Text(
                                                 text = "${telemetry.batteryPercent}%",
                                                 style = MaterialTheme.typography.labelSmall.copy(
                                                     fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Medium
+                                                    fontWeight = FontWeight.Medium,
+                                                    fontFeatureSettings = "tnum"
                                                 ),
-                                                color = winColors.textPrimary
+                                                color = winColors.textPrimary,
+                                                maxLines = 1
                                             )
                                         }
                                     }
@@ -429,21 +444,23 @@ fun Win11Taskbar(
                             }
                         }
 
-                        // Clock & Date Stack
+                        // 3. Clock, Date & Windows 11 Notification Bell
                         if (preferences.showTrayClock) {
                             Row(
                                 modifier = Modifier
-                                    .height((barHeightDp - 10).coerceIn(34, 58).dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(
-                                        if (activePanel == ActivePanel.CALENDAR_NOTIFICATIONS) winColors.cardHover
-                                        else Color.Transparent
+                                    .height(tileHeight)
+                                    .clip(pillCorner)
+                                    .background(clockPillBg)
+                                    .then(
+                                        if (activePanel == ActivePanel.CALENDAR_NOTIFICATIONS) {
+                                            Modifier.border(1.dp, winColors.subtleBorder, pillCorner)
+                                        } else Modifier
                                     )
                                     .clickable(onClick = onClockClick)
-                                    .padding(horizontal = 7.dp)
+                                    .padding(horizontal = if (isCompact) 6.dp else 8.dp)
                                     .testTag("tray_clock_date_button"),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Column(
                                     horizontalAlignment = Alignment.End,
@@ -453,7 +470,9 @@ fun Win11Taskbar(
                                         text = timeText,
                                         style = MaterialTheme.typography.labelMedium.copy(
                                             fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold
+                                            lineHeight = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            fontFeatureSettings = "tnum"
                                         ),
                                         color = winColors.textPrimary,
                                         maxLines = 1,
@@ -462,7 +481,11 @@ fun Win11Taskbar(
                                     if (preferences.showTrayDate) {
                                         Text(
                                             text = dateText,
-                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 10.sp,
+                                                lineHeight = 12.sp,
+                                                fontFeatureSettings = "tnum"
+                                            ),
                                             color = winColors.textSecondary,
                                             maxLines = 1,
                                             overflow = TextOverflow.Clip
@@ -470,33 +493,35 @@ fun Win11Taskbar(
                                     }
                                 }
                                 if (preferences.showTrayNotificationDot) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(6.dp)
-                                            .clip(CircleShape)
-                                            .background(winColors.accent)
+                                    Win11NotificationBellIcon(
+                                        hasBadge = hasNotificationBadge,
+                                        tint = if (hasNotificationBadge) winColors.accent else winColors.textSecondary,
+                                        badgeColor = winColors.accent,
+                                        size = 14.dp,
+                                        modifier = Modifier.testTag("tray_notification_bell")
                                     )
                                 }
                             }
                         }
 
-                        // Show Desktop Sliver
+                        // 4. Show Desktop Edge Sliver (|)
                         if (preferences.showDesktopButtonInTaskbar) {
-                            Spacer(modifier = Modifier.width(2.dp))
                             Box(
                                 modifier = Modifier
-                                    .width(8.dp)
-                                    .height((barHeightDp - 18).coerceIn(24, 42).dp)
-                                    .clip(RoundedCornerShape(3.dp))
+                                    .width(10.dp)
+                                    .height(tileHeight)
+                                    .clip(RoundedCornerShape(4.dp))
                                     .clickable(onClick = onShowDesktopClick)
                                     .testTag("tray_show_desktop_button"),
-                                contentAlignment = Alignment.Center
+                                contentAlignment = Alignment.CenterEnd
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .width(1.dp)
-                                        .height((barHeightDp - 28).coerceIn(14, 30).dp)
-                                        .background(winColors.border)
+                                        .padding(end = 2.dp)
+                                        .width(1.5.dp)
+                                        .height((barHeightDp - 24).coerceIn(16, 30).dp)
+                                        .clip(CircleShape)
+                                        .background(winColors.textSecondary.copy(alpha = 0.45f))
                                 )
                             }
                         }

@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.model.DesktopIconSize
+import com.example.model.DesktopWidget
 import com.example.model.LauncherPreferences
 import com.example.model.TaskbarAlignment
 import com.example.model.TaskbarIconSize
@@ -19,6 +20,8 @@ import com.example.model.TaskbarStyle
 import com.example.model.WallpaperOption
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
+import org.json.JSONObject
 
 private val Context.launcherDataStore: DataStore<Preferences> by preferencesDataStore(name = "win11_launcher_prefs")
 
@@ -52,6 +55,7 @@ class LauncherPreferencesRepository(private val context: Context) {
         val USE_24_HOUR_CLOCK = booleanPreferencesKey("use_24_hour_clock")
         val SHOW_SECONDS_CLOCK = booleanPreferencesKey("show_seconds_clock")
         val HIDE_SYSTEM_STATUS_BAR = booleanPreferencesKey("hide_system_status_bar")
+        val HIDE_SYSTEM_NAV_BAR = booleanPreferencesKey("hide_system_nav_bar")
         val USER_NAME = stringPreferencesKey("user_name")
         val PINNED_START_PACKAGES = stringPreferencesKey("pinned_start_packages")
         val PINNED_TASKBAR_PACKAGES = stringPreferencesKey("pinned_taskbar_packages")
@@ -64,6 +68,7 @@ class LauncherPreferencesRepository(private val context: Context) {
         val AUTO_CHECK_UPDATES = booleanPreferencesKey("auto_check_updates")
         val PENDING_UPDATE_CLEANUP_PATH = stringPreferencesKey("pending_update_cleanup_path")
         val DESKTOP_SHORTCUT_ORDER = stringPreferencesKey("desktop_shortcut_order")
+        val DESKTOP_WIDGETS = stringPreferencesKey("desktop_widgets")
     }
 
     val preferencesFlow: Flow<LauncherPreferences> = context.launcherDataStore.data.map { prefs ->
@@ -107,6 +112,7 @@ class LauncherPreferencesRepository(private val context: Context) {
             use24HourClock = prefs[Keys.USE_24_HOUR_CLOCK] ?: true,
             showSecondsInClock = prefs[Keys.SHOW_SECONDS_CLOCK] ?: false,
             hideSystemStatusBar = prefs[Keys.HIDE_SYSTEM_STATUS_BAR] ?: false,
+            hideSystemNavBar = prefs[Keys.HIDE_SYSTEM_NAV_BAR] ?: false,
             userName = prefs[Keys.USER_NAME]?.takeIf { it.isNotBlank() } ?: "Administrator",
             pinnedStartPackages = decodeList(prefs[Keys.PINNED_START_PACKAGES]),
             pinnedTaskbarPackages = decodeList(prefs[Keys.PINNED_TASKBAR_PACKAGES]),
@@ -117,7 +123,8 @@ class LauncherPreferencesRepository(private val context: Context) {
             safeHomeGuardEnabled = prefs[Keys.SAFE_HOME_GUARD] ?: true,
             githubRepoSlug = prefs[Keys.GITHUB_REPO_SLUG] ?: "",
             autoCheckUpdates = prefs[Keys.AUTO_CHECK_UPDATES] ?: true,
-            desktopShortcutOrder = decodeList(prefs[Keys.DESKTOP_SHORTCUT_ORDER])
+            desktopShortcutOrder = decodeList(prefs[Keys.DESKTOP_SHORTCUT_ORDER]),
+            desktopWidgets = decodeWidgets(prefs[Keys.DESKTOP_WIDGETS])
         )
     }
 
@@ -260,6 +267,10 @@ class LauncherPreferencesRepository(private val context: Context) {
         context.launcherDataStore.edit { it[Keys.HIDE_SYSTEM_STATUS_BAR] = hide }
     }
 
+    suspend fun setHideSystemNavBar(hide: Boolean) {
+        context.launcherDataStore.edit { it[Keys.HIDE_SYSTEM_NAV_BAR] = hide }
+    }
+
     suspend fun setUserName(name: String) {
         context.launcherDataStore.edit {
             it[Keys.USER_NAME] = name.trim().ifEmpty { "Administrator" }
@@ -359,6 +370,47 @@ class LauncherPreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun addDesktopWidget(widget: DesktopWidget) {
+        context.launcherDataStore.edit { prefs ->
+            val current = decodeWidgets(prefs[Keys.DESKTOP_WIDGETS])
+                .filterNot { it.appWidgetId == widget.appWidgetId }
+            prefs[Keys.DESKTOP_WIDGETS] = encodeWidgets(current + widget)
+        }
+    }
+
+    suspend fun updateDesktopWidgetBounds(
+        appWidgetId: Int,
+        xDp: Float,
+        yDp: Float,
+        widthDp: Float,
+        heightDp: Float
+    ) {
+        context.launcherDataStore.edit { prefs ->
+            val current = decodeWidgets(prefs[Keys.DESKTOP_WIDGETS])
+            val updated = current.map { widget ->
+                if (widget.appWidgetId == appWidgetId) {
+                    widget.copy(
+                        xDp = xDp,
+                        yDp = yDp,
+                        widthDp = widthDp,
+                        heightDp = heightDp
+                    )
+                } else {
+                    widget
+                }
+            }
+            prefs[Keys.DESKTOP_WIDGETS] = encodeWidgets(updated)
+        }
+    }
+
+    suspend fun removeDesktopWidget(appWidgetId: Int) {
+        context.launcherDataStore.edit { prefs ->
+            val current = decodeWidgets(prefs[Keys.DESKTOP_WIDGETS])
+                .filterNot { it.appWidgetId == appWidgetId }
+            prefs[Keys.DESKTOP_WIDGETS] = encodeWidgets(current)
+        }
+    }
+
     private fun decodeList(raw: String?): List<String> {
         if (raw.isNullOrBlank()) return emptyList()
         return raw.split("|").filter { it.isNotBlank() }
@@ -366,4 +418,52 @@ class LauncherPreferencesRepository(private val context: Context) {
 
     private fun encodeList(items: List<String>): String =
         items.distinct().joinToString("|")
+
+    private fun decodeWidgets(raw: String?): List<DesktopWidget> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val arr = JSONArray(raw)
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    val id = obj.optInt("id", -1)
+                    if (id < 0) continue
+                    add(
+                        DesktopWidget(
+                            appWidgetId = id,
+                            providerPackage = obj.optString("pkg", ""),
+                            providerClass = obj.optString("cls", ""),
+                            label = obj.optString("label", "Widget"),
+                            xDp = obj.optDouble("x", 24.0).toFloat(),
+                            yDp = obj.optDouble("y", 24.0).toFloat(),
+                            widthDp = obj.optDouble("w", 240.0).toFloat(),
+                            heightDp = obj.optDouble("h", 150.0).toFloat(),
+                            minWidthDp = obj.optInt("minW", 96),
+                            minHeightDp = obj.optInt("minH", 72)
+                        )
+                    )
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun encodeWidgets(widgets: List<DesktopWidget>): String {
+        val arr = JSONArray()
+        widgets.forEach { w ->
+            val obj = JSONObject().apply {
+                put("id", w.appWidgetId)
+                put("pkg", w.providerPackage)
+                put("cls", w.providerClass)
+                put("label", w.label)
+                put("x", w.xDp.toDouble())
+                put("y", w.yDp.toDouble())
+                put("w", w.widthDp.toDouble())
+                put("h", w.heightDp.toDouble())
+                put("minW", w.minWidthDp)
+                put("minH", w.minHeightDp)
+            }
+            arr.put(obj)
+        }
+        return arr.toString()
+    }
 }

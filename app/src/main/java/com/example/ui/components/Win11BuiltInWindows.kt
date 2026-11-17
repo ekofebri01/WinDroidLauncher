@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.VideoLibrary
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -332,6 +333,7 @@ fun PersonalizeWindowContent(
     onSet24HourClock: (Boolean) -> Unit,
     onSetShowSeconds: (Boolean) -> Unit,
     onSetHideStatusBar: (Boolean) -> Unit,
+    onSetHideNavBar: (Boolean) -> Unit,
     onSetUserName: (String) -> Unit,
     onRestoreDefaults: () -> Unit,
     onRequestSafeHomeSwitch: () -> Unit,
@@ -342,7 +344,8 @@ fun PersonalizeWindowContent(
     onCheckGitHubUpdates: () -> Unit,
     onOpenGitHubRelease: (Boolean) -> Unit,
     onStartInAppUpdate: () -> Unit,
-    onOpenPanelSelector: () -> Unit
+    onOpenPanelSelector: () -> Unit,
+    onOpenWidgetPicker: () -> Unit = {}
 ) {
     val winColors = LocalWin11Colors.current
     var nameDraft by remember(preferences.userName) { mutableStateOf(preferences.userName) }
@@ -684,7 +687,18 @@ fun PersonalizeWindowContent(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             SettingSwitchRow("Windows 11 Dark Mode", preferences.isDarkTheme, onSetDarkTheme)
-            SettingSwitchRow("Full-Screen Desktop (Hide Android Top Bar)", preferences.hideSystemStatusBar, onSetHideStatusBar)
+            SettingSwitchRow(
+                title = "Full-Screen Desktop (Hide Android Top Bar)",
+                checked = preferences.hideSystemStatusBar,
+                onCheckedChange = onSetHideStatusBar,
+                modifier = Modifier.testTag("settings_toggle_hide_statusbar")
+            )
+            SettingSwitchRow(
+                title = "Sembunyikan Navbar Android (Hide Nav Bar)",
+                checked = preferences.hideSystemNavBar,
+                onCheckedChange = onSetHideNavBar,
+                modifier = Modifier.testTag("settings_toggle_hide_navbar")
+            )
         }
 
         // Full Taskbar Personalization Section
@@ -715,6 +729,18 @@ fun PersonalizeWindowContent(
             onResetTaskbarDefaults = onResetTaskbarDefaults,
             onOpenPanelSelector = onOpenPanelSelector
         )
+
+        // Desktop App Widgets shortcut
+        Button(
+            onClick = onOpenWidgetPicker,
+            colors = ButtonDefaults.buttonColors(containerColor = winColors.accentSoft),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth().testTag("settings_open_widget_picker")
+        ) {
+            Icon(Icons.Rounded.Widgets, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Tambah Widget Aplikasi ke Desktop...", color = Color.White, fontWeight = FontWeight.SemiBold)
+        }
 
         // Desktop Icon Size
         Text(
@@ -823,18 +849,24 @@ private fun WallpaperPresetCard(
 private fun SettingSwitchRow(
     title: String,
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val winColors = LocalWin11Colors.current
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(title, style = MaterialTheme.typography.bodyMedium, color = winColors.textPrimary)
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyMedium,
+            color = winColors.textPrimary,
+            modifier = Modifier.weight(1f).padding(end = 8.dp)
+        )
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,

@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -26,10 +28,6 @@ import androidx.compose.material.icons.automirrored.rounded.ExitToApp
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
-import androidx.compose.material.icons.automirrored.rounded.VolumeOff
-import androidx.compose.material.icons.automirrored.rounded.VolumeUp
-import androidx.compose.material.icons.rounded.BatteryChargingFull
-import androidx.compose.material.icons.rounded.BatteryFull
 import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.Brightness6
 import androidx.compose.material.icons.rounded.Close
@@ -37,11 +35,16 @@ import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.FlashlightOn
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.material3.HorizontalDivider
@@ -56,6 +59,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -100,166 +104,222 @@ fun Win11QuickSettingsFlyout(
     onDisplaySettingsClick: () -> Unit,
     onOpenPersonalize: () -> Unit,
     onVolumeChange: (Int) -> Unit,
+    onOpenTaskbarSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val winColors = LocalWin11Colors.current
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(12.dp)
+    val activeContentColor = if (winColors.isDark) Color(0xFF001C32) else Color.White
+    val volumePct = (telemetry.mediaVolume * 100 / telemetry.maxMediaVolume.coerceAtLeast(1)).coerceIn(0, 100)
 
     Surface(
         modifier = modifier
-            .widthIn(max = 350.dp)
+            .widthIn(max = 356.dp)
             .fillMaxWidth()
-            .shadow(22.dp, shape)
+            .shadow(24.dp, shape)
             .border(1.dp, winColors.border, shape)
             .testTag("win11_quick_settings"),
         shape = shape,
         color = winColors.micaSurface
     ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // 2x3 Quick Toggle Grid
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                QuickSettingTile(
-                    icon = if (telemetry.isWifiConnected) Icons.Rounded.Wifi else Icons.Rounded.WifiOff,
-                    label = if (telemetry.isWifiConnected) "Wi-Fi" else "Network",
-                    isActive = telemetry.isWifiConnected,
-                    onClick = onWifiClick,
-                    modifier = Modifier.weight(1f)
-                )
-                QuickSettingTile(
-                    icon = Icons.Rounded.Bluetooth,
-                    label = "Bluetooth",
-                    isActive = false,
-                    onClick = onBluetoothClick,
-                    modifier = Modifier.weight(1f)
-                )
-                QuickSettingTile(
-                    icon = if (isDarkTheme) Icons.Rounded.DarkMode else Icons.Rounded.LightMode,
-                    label = if (isDarkTheme) "Dark" else "Light",
-                    isActive = isDarkTheme,
-                    onClick = onToggleTheme,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                QuickSettingTile(
-                    icon = Icons.Rounded.FlashlightOn,
-                    label = "Flashlight",
-                    isActive = telemetry.isFlashlightOn,
-                    onClick = onToggleFlashlight,
-                    modifier = Modifier.weight(1f)
-                )
-                QuickSettingTile(
-                    icon = if (telemetry.isMuted) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
-                    label = if (telemetry.isMuted) "Muted" else "Sound",
-                    isActive = !telemetry.isMuted,
-                    onClick = onToggleMute,
-                    modifier = Modifier.weight(1f)
-                )
-                QuickSettingTile(
-                    icon = Icons.Rounded.Home,
-                    label = "Default Home",
-                    isActive = false,
-                    onClick = onHomeSettingsClick,
-                    modifier = Modifier.weight(1f)
-                )
+        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // 3x2 Windows 11 Fluent Quick Action Grid
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    QuickSettingSplitTile(
+                        icon = if (telemetry.isWifiConnected) Icons.Rounded.Wifi else Icons.Rounded.WifiOff,
+                        label = when {
+                            telemetry.isWifiConnected -> "Wi-Fi"
+                            telemetry.isCellularConnected -> "Cellular"
+                            else -> "Network"
+                        },
+                        isActive = telemetry.isWifiConnected || telemetry.isCellularConnected,
+                        hasSplitChevron = true,
+                        activeContentColor = activeContentColor,
+                        onClick = onWifiClick,
+                        modifier = Modifier.weight(1f)
+                    )
+                    QuickSettingSplitTile(
+                        icon = Icons.Rounded.Bluetooth,
+                        label = "Bluetooth",
+                        isActive = false,
+                        hasSplitChevron = true,
+                        activeContentColor = activeContentColor,
+                        onClick = onBluetoothClick,
+                        modifier = Modifier.weight(1f)
+                    )
+                    QuickSettingSplitTile(
+                        icon = if (isDarkTheme) Icons.Rounded.DarkMode else Icons.Rounded.LightMode,
+                        label = if (isDarkTheme) "Dark Mode" else "Light Mode",
+                        isActive = isDarkTheme,
+                        hasSplitChevron = false,
+                        activeContentColor = activeContentColor,
+                        onClick = onToggleTheme,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    QuickSettingSplitTile(
+                        icon = Icons.Rounded.FlashlightOn,
+                        label = "Flashlight",
+                        isActive = telemetry.isFlashlightOn,
+                        hasSplitChevron = false,
+                        activeContentColor = activeContentColor,
+                        onClick = onToggleFlashlight,
+                        modifier = Modifier.weight(1f)
+                    )
+                    QuickSettingSplitTile(
+                        icon = Icons.Rounded.Info,
+                        label = if (telemetry.isMuted) "Muted" else "Sound $volumePct%",
+                        isActive = !telemetry.isMuted,
+                        hasSplitChevron = false,
+                        activeContentColor = activeContentColor,
+                        onClick = onToggleMute,
+                        modifier = Modifier.weight(1f),
+                        customIcon = { iconColor ->
+                            Win11TrayVolumeIcon(
+                                volume = telemetry.mediaVolume,
+                                maxVolume = telemetry.maxMediaVolume,
+                                isMuted = telemetry.isMuted,
+                                tint = iconColor,
+                                size = 18.dp
+                            )
+                        }
+                    )
+                    QuickSettingSplitTile(
+                        icon = Icons.Rounded.Home,
+                        label = "Default Home",
+                        isActive = false,
+                        hasSplitChevron = false,
+                        activeContentColor = activeContentColor,
+                        onClick = onHomeSettingsClick,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Display & Brightness Quick Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(winColors.cardSurface.copy(alpha = 0.7f))
+                        .border(1.dp, winColors.subtleBorder, RoundedCornerShape(8.dp))
+                        .clickable(onClick = onDisplaySettingsClick)
+                        .padding(horizontal = 10.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Brightness6,
+                        contentDescription = "Display Brightness",
+                        tint = winColors.textPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "Display & Brightness Settings",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                        color = winColors.textPrimary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = winColors.textSecondary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                // Real Media Volume Slider
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    IconButton(onClick = onToggleMute, modifier = Modifier.size(34.dp)) {
+                        Win11TrayVolumeIcon(
+                            volume = telemetry.mediaVolume,
+                            maxVolume = telemetry.maxMediaVolume,
+                            isMuted = telemetry.isMuted,
+                            tint = winColors.textPrimary,
+                            size = 18.dp
+                        )
+                    }
+                    Slider(
+                        value = telemetry.mediaVolume.toFloat(),
+                        onValueChange = { onVolumeChange(it.toInt()) },
+                        valueRange = 0f..telemetry.maxMediaVolume.toFloat(),
+                        colors = SliderDefaults.colors(
+                            thumbColor = winColors.accent,
+                            activeTrackColor = winColors.accent,
+                            inactiveTrackColor = winColors.border
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "$volumePct%",
+                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                        color = winColors.textSecondary,
+                        modifier = Modifier.width(34.dp),
+                        textAlign = TextAlign.End
+                    )
+                }
             }
 
+            // Windows 11 Tinted Footer Strip
             HorizontalDivider(thickness = 1.dp, color = winColors.subtleBorder)
-
-            // Brightness shortcut row
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(onClick = onDisplaySettingsClick)
-                    .padding(horizontal = 4.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Brightness6,
-                    contentDescription = "Display Brightness",
-                    tint = winColors.textPrimary,
-                    modifier = Modifier.size(20.dp)
-                )
-                Text(
-                    text = "Display & Brightness Settings",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = winColors.textPrimary,
-                    modifier = Modifier.weight(1f)
-                )
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = winColors.textSecondary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            // Real Media Volume Slider
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                IconButton(onClick = onToggleMute, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        imageVector = if (telemetry.isMuted) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
-                        contentDescription = "Toggle Mute",
-                        tint = winColors.textPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Slider(
-                    value = telemetry.mediaVolume.toFloat(),
-                    onValueChange = { onVolumeChange(it.toInt()) },
-                    valueRange = 0f..telemetry.maxMediaVolume.toFloat(),
-                    colors = SliderDefaults.colors(
-                        thumbColor = winColors.accent,
-                        activeTrackColor = winColors.accent,
-                        inactiveTrackColor = winColors.border
-                    ),
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = "${(telemetry.mediaVolume * 100 / telemetry.maxMediaVolume)}%",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = winColors.textSecondary,
-                    modifier = Modifier.width(34.dp),
-                    textAlign = TextAlign.End
-                )
-            }
-
-            // Footer: Battery & Settings
-            HorizontalDivider(thickness = 1.dp, color = winColors.subtleBorder)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
+                    .background(winColors.cardSurface.copy(alpha = 0.65f))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = if (telemetry.isCharging) Icons.Rounded.BatteryChargingFull else Icons.Rounded.BatteryFull,
-                        contentDescription = null,
-                        tint = winColors.accent,
-                        modifier = Modifier.size(18.dp)
+                    Win11TrayBatteryIcon(
+                        percent = telemetry.batteryPercent,
+                        isCharging = telemetry.isCharging,
+                        tint = winColors.textPrimary,
+                        size = 17.dp
                     )
                     Text(
                         text = "${telemetry.batteryPercent}%${if (telemetry.isCharging) " • Charging" else ""}",
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
                         color = winColors.textPrimary
                     )
                 }
-                IconButton(onClick = onOpenPersonalize, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        imageVector = Icons.Rounded.Settings,
-                        contentDescription = "Personalize",
-                        tint = winColors.textPrimary,
-                        modifier = Modifier.size(18.dp)
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    IconButton(
+                        onClick = onOpenTaskbarSettings,
+                        modifier = Modifier.size(34.dp).testTag("quick_settings_tray_customize")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Tune,
+                            contentDescription = "Customize System Tray",
+                            tint = winColors.textPrimary,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onOpenPersonalize,
+                        modifier = Modifier.size(34.dp).testTag("quick_settings_personalize_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Settings,
+                            contentDescription = "All Settings",
+                            tint = winColors.textPrimary,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
                 }
             }
         }
@@ -267,31 +327,73 @@ fun Win11QuickSettingsFlyout(
 }
 
 @Composable
-private fun QuickSettingTile(
+private fun QuickSettingSplitTile(
     icon: ImageVector,
     label: String,
     isActive: Boolean,
+    hasSplitChevron: Boolean,
+    activeContentColor: Color,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    customIcon: (@Composable (Color) -> Unit)? = null
 ) {
     val winColors = LocalWin11Colors.current
+    val tileShape = RoundedCornerShape(8.dp)
+    val contentTint = if (isActive) activeContentColor else winColors.textPrimary
+
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(if (isActive) winColors.accentSoft else winColors.cardSurface)
-                .border(1.dp, winColors.subtleBorder, RoundedCornerShape(8.dp))
+                .height(46.dp)
+                .clip(tileShape)
+                .background(if (isActive) winColors.accent else winColors.cardSurface)
+                .border(
+                    width = 1.dp,
+                    color = if (isActive) winColors.accent else winColors.subtleBorder,
+                    shape = tileShape
+                )
                 .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (isActive) Color.White else winColors.textPrimary,
-                modifier = Modifier.size(20.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                contentAlignment = Alignment.Center
+            ) {
+                if (customIcon != null) {
+                    customIcon(contentTint)
+                } else {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = label,
+                        tint = contentTint,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+            }
+            if (hasSplitChevron) {
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(22.dp)
+                        .background(contentTint.copy(alpha = 0.22f))
+                )
+                Box(
+                    modifier = Modifier
+                        .width(26.dp)
+                        .fillMaxHeight(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = contentTint.copy(alpha = 0.85f),
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
         }
         Spacer(modifier = Modifier.height(5.dp))
         Text(
@@ -314,8 +416,9 @@ fun Win11CalendarFlyout(
     modifier: Modifier = Modifier
 ) {
     val winColors = LocalWin11Colors.current
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(12.dp)
     var monthOffset by remember { mutableIntStateOf(0) }
+    var calendarExpanded by remember { mutableStateOf(true) }
 
     val todayCal = remember(currentTimeMillis) {
         Calendar.getInstance().apply { timeInMillis = currentTimeMillis }
@@ -328,7 +431,7 @@ fun Win11CalendarFlyout(
         }
     }
 
-    val headerDate = SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault()).format(Date(currentTimeMillis))
+    val headerDate = SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(Date(currentTimeMillis))
     val monthYearLabel = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(displayCal.time)
 
     val daysInMonth = displayCal.getActualMaximum(Calendar.DAY_OF_MONTH)
@@ -340,161 +443,278 @@ fun Win11CalendarFlyout(
     val cells = remember(monthOffset, daysInMonth, firstDayOfWeek) {
         List(firstDayOfWeek) { null } + (1..daysInMonth).toList()
     }
+    val hasUpdateNotice = githubUpdateState.status == GitHubUpdateStatus.UPDATE_AVAILABLE
+    val notificationCount = if (hasUpdateNotice) 2 else 1
+    val storageProgress = (telemetry.usedStorageGb / telemetry.totalStorageGb.coerceAtLeast(1f)).coerceIn(0f, 1f)
 
-    Surface(
+    Column(
         modifier = modifier
-            .widthIn(max = 350.dp)
+            .widthIn(max = 356.dp)
             .fillMaxWidth()
-            .shadow(22.dp, shape)
-            .border(1.dp, winColors.border, shape)
+            .verticalScroll(rememberScrollState())
             .testTag("win11_calendar_flyout"),
-        shape = shape,
-        color = winColors.micaSurface
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (githubUpdateState.status == GitHubUpdateStatus.UPDATE_AVAILABLE) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF10B981).copy(alpha = 0.16f))
-                        .border(1.dp, Color(0xFF10B981).copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                        .clickable(onClick = onOpenUpdateSettings)
-                        .padding(12.dp)
-                        .testTag("flyout_github_update_notice"),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
-                ) {
-                    Text(
-                        text = "GitHub Update Available • ${githubUpdateState.latestTag ?: ""}",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color(0xFF4CD4A9)
-                    )
-                    Text(
-                        text = "Tap to view release notes & download",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = winColors.textPrimary
-                    )
-                }
-            }
-
-            // System Notification Card
+        // Card 1: Windows 11 Notification Center
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(22.dp, shape)
+                .border(1.dp, winColors.border, shape),
+            shape = shape,
+            color = winColors.micaSurface
+        ) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(winColors.cardSurface)
-                    .border(1.dp, winColors.subtleBorder, RoundedCornerShape(10.dp))
-                    .clickable(onClick = onOpenThisPc)
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Notifications,
+                            contentDescription = null,
+                            tint = winColors.accent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Notifications",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = winColors.textPrimary
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(winColors.cardSurface)
+                            .border(1.dp, winColors.subtleBorder, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "$notificationCount active",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = winColors.textSecondary
+                        )
+                    }
+                }
+
+                if (hasUpdateNotice) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF10B981).copy(alpha = 0.16f))
+                            .border(1.dp, Color(0xFF10B981).copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                            .clickable(onClick = onOpenUpdateSettings)
+                            .padding(11.dp)
+                            .testTag("flyout_github_update_notice"),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(
+                            text = "Windows Update • ${githubUpdateState.latestTag ?: ""}",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color(0xFF4CD4A9)
+                        )
+                        Text(
+                            text = "New release ready. Tap to download & install",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = winColors.textPrimary
+                        )
+                    }
+                }
+
+                // System Status Notification Card
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(winColors.cardSurface)
+                        .border(1.dp, winColors.subtleBorder, RoundedCornerShape(10.dp))
+                        .clickable(onClick = onOpenThisPc)
+                        .padding(11.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "System Health",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = winColors.accent
+                        )
+                        Text(
+                            text = telemetry.androidVersion,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = winColors.textSecondary
+                        )
+                    }
                     Text(
-                        text = "System Status",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = winColors.accent
+                        text = "${telemetry.deviceModel} • RAM ${telemetry.availableRamMb} MB free",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = winColors.textPrimary
+                    )
+                    LinearProgressIndicator(
+                        progress = { storageProgress },
+                        color = winColors.accent,
+                        trackColor = winColors.border,
+                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape)
                     )
                     Text(
-                        text = telemetry.androidVersion,
+                        text = String.format(
+                            Locale.getDefault(),
+                            "Local Disk (C:) %.1f GB used of %.0f GB",
+                            telemetry.usedStorageGb,
+                            telemetry.totalStorageGb
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = winColors.textSecondary
                     )
                 }
-                Text(
-                    text = "${telemetry.deviceModel} • RAM ${telemetry.availableRamMb} MB free",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = winColors.textPrimary
-                )
-                Text(
-                    text = String.format(
-                        Locale.getDefault(),
-                        "Disk C: %.1f GB used of %.0f GB",
-                        telemetry.usedStorageGb,
-                        telemetry.totalStorageGb
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = winColors.textSecondary
-                )
             }
+        }
 
-            HorizontalDivider(thickness = 1.dp, color = winColors.subtleBorder)
-
-            // Today full date label
-            Text(
-                text = headerDate,
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = winColors.textPrimary
-            )
-
-            // Month navigation
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = monthYearLabel,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                    color = winColors.textPrimary
-                )
-                Row {
-                    IconButton(onClick = { monthOffset-- }, modifier = Modifier.size(32.dp)) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
-                            contentDescription = "Previous month",
-                            tint = winColors.textPrimary
-                        )
-                    }
-                    IconButton(onClick = { monthOffset++ }, modifier = Modifier.size(32.dp)) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                            contentDescription = "Next month",
-                            tint = winColors.textPrimary
-                        )
-                    }
-                }
-            }
-
-            // Weekday labels
-            Row(modifier = Modifier.fillMaxWidth()) {
-                listOf("Su", "Mo", "Tu", "We", "Th", "Fr", "Sa").forEach { day ->
+        // Card 2: Collapsible Windows 11 Calendar
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(22.dp, shape)
+                .border(1.dp, winColors.border, shape),
+            shape = shape,
+            color = winColors.micaSurface
+        ) {
+            Column {
+                // Date Header Strip + Collapse Toggle
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(winColors.cardSurface.copy(alpha = 0.65f))
+                        .clickable { calendarExpanded = !calendarExpanded }
+                        .padding(horizontal = 14.dp, vertical = 9.dp)
+                        .testTag("calendar_collapse_toggle"),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = day,
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = winColors.textSecondary,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1f)
+                        text = headerDate,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
+                        color = winColors.textPrimary
                     )
+                    Box(
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(winColors.cardSurface)
+                            .border(1.dp, winColors.subtleBorder, RoundedCornerShape(6.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (calendarExpanded) Icons.Rounded.KeyboardArrowDown else Icons.Rounded.KeyboardArrowUp,
+                            contentDescription = if (calendarExpanded) "Collapse calendar" else "Expand calendar",
+                            tint = winColors.textPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
-            }
 
-            // Calendar Grid
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                cells.chunked(7).forEach { week ->
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        for (i in 0 until 7) {
-                            val day = week.getOrNull(i)
-                            val isToday = isCurrentMonth && day == todayDay
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(32.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isToday) winColors.accentSoft else Color.Transparent),
-                                contentAlignment = Alignment.Center
+                AnimatedVisibility(visible = calendarExpanded) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Month navigation (Win11 Up/Down arrows + Today shortcut)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = monthYearLabel,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = winColors.textPrimary
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
-                                if (day != null) {
+                                if (monthOffset != 0) {
                                     Text(
-                                        text = day.toString(),
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
-                                        ),
-                                        color = if (isToday) Color.White else winColors.textPrimary
+                                        text = "Today",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = winColors.accent,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable { monthOffset = 0 }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
                                     )
+                                }
+                                IconButton(onClick = { monthOffset-- }, modifier = Modifier.size(30.dp)) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.KeyboardArrowUp,
+                                        contentDescription = "Previous month",
+                                        tint = winColors.textPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                IconButton(onClick = { monthOffset++ }, modifier = Modifier.size(30.dp)) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.KeyboardArrowDown,
+                                        contentDescription = "Next month",
+                                        tint = winColors.textPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Weekday labels
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            listOf("Su", "Mo", "Tu", "We", "Th", "Fr", "Sa").forEach { day ->
+                                Text(
+                                    text = day,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = winColors.textSecondary,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        // Calendar Grid
+                        val todayTextColor = if (winColors.isDark) Color(0xFF001C32) else Color.White
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            cells.chunked(7).forEach { week ->
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    for (i in 0 until 7) {
+                                        val day = week.getOrNull(i)
+                                        val isToday = isCurrentMonth && day == todayDay
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(27.dp)
+                                                .clip(CircleShape)
+                                                .background(if (isToday) winColors.accent else Color.Transparent),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (day != null) {
+                                                Text(
+                                                    text = day.toString(),
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                                                        fontFeatureSettings = "tnum"
+                                                    ),
+                                                    color = if (isToday) todayTextColor else winColors.textPrimary
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -795,42 +1015,127 @@ fun Win11HiddenTrayFlyout(
     onToggleTheme: () -> Unit,
     onRefreshApps: () -> Unit,
     onOpenPersonalize: () -> Unit,
+    onOpenTaskbarSettings: () -> Unit = {},
+    onOpenWifiSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val winColors = LocalWin11Colors.current
     val shape = RoundedCornerShape(12.dp)
     Surface(
         modifier = modifier
-            .shadow(18.dp, shape)
-            .border(1.dp, winColors.border, shape),
+            .widthIn(min = 196.dp, max = 236.dp)
+            .shadow(20.dp, shape)
+            .border(1.dp, winColors.border, shape)
+            .testTag("win11_hidden_tray_flyout"),
         shape = shape,
         color = winColors.micaSurface
     ) {
-        Row(
-            modifier = Modifier.padding(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            IconButton(onClick = onToggleFlashlight) {
-                Icon(
-                    Icons.Rounded.FlashlightOn,
-                    contentDescription = "Flashlight",
-                    tint = if (isFlashlightOn) winColors.accent else winColors.textPrimary
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "System Tray",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = winColors.textSecondary
+                )
+                Text(
+                    text = "Customize",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                    color = winColors.accent,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable(onClick = onOpenTaskbarSettings)
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
                 )
             }
-            IconButton(onClick = onToggleTheme) {
-                Icon(
-                    if (isDarkTheme) Icons.Rounded.DarkMode else Icons.Rounded.LightMode,
-                    contentDescription = "Toggle theme",
-                    tint = winColors.textPrimary
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                HiddenTrayOverflowTile(
+                    icon = Icons.Rounded.FlashlightOn,
+                    description = "Flashlight",
+                    isActive = isFlashlightOn,
+                    onClick = onToggleFlashlight,
+                    modifier = Modifier.weight(1f)
+                )
+                HiddenTrayOverflowTile(
+                    icon = if (isDarkTheme) Icons.Rounded.DarkMode else Icons.Rounded.LightMode,
+                    description = "Toggle theme",
+                    isActive = isDarkTheme,
+                    onClick = onToggleTheme,
+                    modifier = Modifier.weight(1f)
+                )
+                HiddenTrayOverflowTile(
+                    icon = Icons.Rounded.Refresh,
+                    description = "Refresh apps",
+                    isActive = false,
+                    onClick = onRefreshApps,
+                    modifier = Modifier.weight(1f)
                 )
             }
-            IconButton(onClick = onRefreshApps) {
-                Icon(Icons.Rounded.Refresh, contentDescription = "Refresh apps", tint = winColors.textPrimary)
-            }
-            IconButton(onClick = onOpenPersonalize) {
-                Icon(Icons.Rounded.Settings, contentDescription = "Personalize", tint = winColors.textPrimary)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                HiddenTrayOverflowTile(
+                    icon = Icons.Rounded.Wifi,
+                    description = "Network Settings",
+                    isActive = false,
+                    onClick = onOpenWifiSettings,
+                    modifier = Modifier.weight(1f)
+                )
+                HiddenTrayOverflowTile(
+                    icon = Icons.Rounded.Tune,
+                    description = "Taskbar & Tray Settings",
+                    isActive = false,
+                    onClick = onOpenTaskbarSettings,
+                    modifier = Modifier.weight(1f)
+                )
+                HiddenTrayOverflowTile(
+                    icon = Icons.Rounded.Settings,
+                    description = "Personalize",
+                    isActive = false,
+                    onClick = onOpenPersonalize,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun HiddenTrayOverflowTile(
+    icon: ImageVector,
+    description: String,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val winColors = LocalWin11Colors.current
+    val shape = RoundedCornerShape(8.dp)
+    Box(
+        modifier = modifier
+            .height(42.dp)
+            .clip(shape)
+            .background(if (isActive) winColors.accent.copy(alpha = 0.16f) else winColors.cardSurface)
+            .border(
+                width = 1.dp,
+                color = if (isActive) winColors.accent.copy(alpha = 0.45f) else winColors.subtleBorder,
+                shape = shape
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = description,
+            tint = if (isActive) winColors.accent else winColors.textPrimary,
+            modifier = Modifier.size(18.dp)
+        )
     }
 }
 
@@ -853,7 +1158,10 @@ fun Win11ContextMenuDialog(
     onRestoreDefaultShortcuts: () -> Unit,
     onOpenHomeSettings: () -> Unit,
     fallbackHomeLabel: String? = null,
-    onSwitchToSystemHome: () -> Unit = {}
+    onSwitchToSystemHome: () -> Unit = {},
+    hasDesktopWidgets: Boolean = false,
+    onAddWidget: () -> Unit = {},
+    onEditWidgets: () -> Unit = {}
 ) {
     val winColors = LocalWin11Colors.current
     val shape = RoundedCornerShape(12.dp)
@@ -875,6 +1183,25 @@ fun Win11ContextMenuDialog(
                         color = winColors.textSecondary,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
                     )
+                    ContextMenuRow(
+                        icon = Icons.Rounded.Widgets,
+                        label = "Tambah Widget Aplikasi",
+                        onClick = {
+                            onDismiss()
+                            onAddWidget()
+                        }
+                    )
+                    if (hasDesktopWidgets) {
+                        ContextMenuRow(
+                            icon = Icons.Rounded.Tune,
+                            label = "Atur / Ubah Ukuran Widget",
+                            onClick = {
+                                onDismiss()
+                                onEditWidgets()
+                            }
+                        )
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = winColors.subtleBorder)
                     DesktopIconSize.entries.forEach { size ->
                         val selected = preferences.desktopIconSize == size
                         ContextMenuRow(
