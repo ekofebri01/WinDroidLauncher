@@ -194,6 +194,57 @@ class ExampleRobolectricTest {
     }
 
     @Test
+    fun `widget button is removed from taskbar and taskbar personalization updates height and components`() {
+        composeRule.waitForIdle()
+
+        // Widget button is removed from taskbar
+        composeRule.onNodeWithTag("taskbar_widgets_button").assertDoesNotExist()
+        composeRule.onNodeWithTag("taskbar_task_view_button").assertIsDisplayed()
+
+        val initialBarBounds = composeRule.onNodeWithTag("win11_taskbar").getBoundsInRoot()
+        val initialBarHeight = initialBarBounds.bottom - initialBarBounds.top
+
+        // Open Personalize -> scroll to Taskbar Personalization card
+        composeRule.onNodeWithTag("desktop_shortcut_sys_personalize").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("settings_taskbar_card").performScrollTo().assertIsDisplayed()
+
+        // Change height preset to Tall (64 dp)
+        composeRule.onNodeWithTag("settings_taskbar_height_preset_64").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            val bounds = composeRule.onNodeWithTag("win11_taskbar").getBoundsInRoot()
+            (bounds.bottom - bounds.top) > initialBarHeight
+        }
+
+        // Toggle Task View component visibility off
+        composeRule.onNodeWithTag("settings_toggle_taskbar_task_view").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("taskbar_task_view_button"))
+                .fetchSemanticsNodes().isEmpty()
+        }
+
+        // Toggle Network indicator off
+        composeRule.onNodeWithTag("settings_toggle_tray_network").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodes(
+                androidx.compose.ui.test.hasTestTag("tray_wifi_indicator"),
+                useUnmergedTree = true
+            ).fetchSemanticsNodes().isEmpty()
+        }
+
+        // Reset taskbar defaults restores components
+        composeRule.onNodeWithTag("settings_taskbar_reset").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000L) {
+            composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("taskbar_task_view_button"))
+                .fetchSemanticsNodes().isNotEmpty() &&
+                composeRule.onAllNodes(
+                    androidx.compose.ui.test.hasTestTag("tray_wifi_indicator"),
+                    useUnmergedTree = true
+                ).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    @Test
     fun `downloaded update apk file is deleted after cleanup`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }

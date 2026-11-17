@@ -4,6 +4,21 @@ Semua perubahan penting pada proyek **Win11 Launcher** didokumentasikan di file 
 
 Format changelog mengacu pada [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/) dan penomoran versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-11-16
+
+### Added
+- **Full Taskbar & System Tray Personalization (Settings → Personalize)**
+  - Penambahan kartu pengaturan taskbar komprehensif (`Win11TaskbarSettingsSection`) yang terintegrasi dengan Jetpack DataStore.
+  - Pengaturan **Tinggi Taskbar** via slider (44 dp – 72 dp) dan preset cepat (*Compact*, *Standard*, *Tall*).
+  - Pilihan **Gaya Taskbar**: *Docked* (menempel) atau *Floating* (melayang dengan sudut membulat).
+  - Pengaturan **Opasitas Taskbar** (45% – 100%) dan **Ukuran Ikon** (*Small*, *Medium*, *Large*).
+  - Toggle visibilitas komponen utama taskbar: Tombol *Search Mode* (*Auto*, *Icon*, *Search Box*, *Hidden*), *Task View*, *File Explorer*, *Pinned Apps*, dan tombol *Show Desktop*.
+  - Toggle visibilitas individual komponen *System Tray*: Panah *Hidden Icons* (`^`), Indikator Wi-Fi/Jaringan, Ikon Volume, Ikon Baterai, Persentase Baterai (%), Jam & Tanggal, format 24 Jam, Detik, Titik Notifikasi, serta tombol Reset ke Default.
+- **Pembaruan UI Taskbar**
+  - Menghapus tombol Widget di sisi kiri taskbar demi kebersihan layout desktop.
+- **Build Release APK v1.0.1**
+  - Berhasil membangun dan memvalidasi rilis APK v1.0.1 (`versionCode = 2`) dengan tanda tangan kompatibel untuk *instal timpa*.
+
 ## [1.0.0] - 2026-11-16
 
 ### Added
@@ -18,7 +33,7 @@ Format changelog mengacu pada [Keep a Changelog](https://keepachangelog.com/id-I
 - **Retractable Start Menu**
   - Panel Start Menu interaktif dengan *Search Bar* terpadu, daftar *Pinned* & *All apps*, area *Recommended* files, gestur tutup (*swipe down*, chevron, scrim tap, *Back*), serta menu *Power*.
 - **System Tray & Flyouts**
-  - System Tray di sisi kanan taskbar menampilkan jam & tanggal, status Wi-Fi/jaringan, status & persentase baterai dinamis dengan Material Icons, Quick Settings, Calendar & Notifications, Widgets, dan Task View.
+  - System Tray di sisi kanan taskbar menampilkan jam & tanggal, status Wi-Fi/jaringan, status & persentase baterai dinamis dengan Material Icons, Quick Settings, Calendar & Notifications, dan Task View.
 - **Pengganti Home Launcher Aman**
   - Deteksi status Home default dan launcher bawaan yang terpasang, dialog konfirmasi aman (`SafeHomeChooserDialog`), pengaturan guard di *Personalize*, penanganan `onNewIntent` tombol Home, dan opsi 1-ketuk kembali ke launcher bawaan.
 - **Deteksi Update GitHub & Update In-App APK**

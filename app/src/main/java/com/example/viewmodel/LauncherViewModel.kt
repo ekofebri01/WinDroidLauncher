@@ -24,6 +24,9 @@ import com.example.model.LauncherPreferences
 import com.example.model.ShortcutKind
 import com.example.model.SystemTelemetry
 import com.example.model.TaskbarAlignment
+import com.example.model.TaskbarIconSize
+import com.example.model.TaskbarSearchMode
+import com.example.model.TaskbarStyle
 import com.example.model.WallpaperOption
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -563,6 +566,87 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun setTaskbarAlignment(alignment: TaskbarAlignment) {
         viewModelScope.launch { prefsRepo.setTaskbarAlignment(alignment) }
+    }
+
+    fun setTaskbarHeightDp(heightDp: Int) {
+        viewModelScope.launch { prefsRepo.setTaskbarHeightDp(heightDp) }
+    }
+
+    fun setTaskbarStyle(style: TaskbarStyle) {
+        viewModelScope.launch { prefsRepo.setTaskbarStyle(style) }
+    }
+
+    fun setTaskbarIconSize(iconSize: TaskbarIconSize) {
+        viewModelScope.launch { prefsRepo.setTaskbarIconSize(iconSize) }
+    }
+
+    fun setTaskbarOpacity(opacity: Float) {
+        viewModelScope.launch { prefsRepo.setTaskbarOpacity(opacity) }
+    }
+
+    fun setTaskbarShowDivider(show: Boolean) {
+        viewModelScope.launch { prefsRepo.setTaskbarShowDivider(show) }
+    }
+
+    fun setTaskbarShowActiveIndicator(show: Boolean) {
+        viewModelScope.launch { prefsRepo.setTaskbarShowActiveIndicator(show) }
+    }
+
+    fun setTaskbarSearchMode(mode: TaskbarSearchMode) {
+        viewModelScope.launch { prefsRepo.setTaskbarSearchMode(mode) }
+    }
+
+    fun setShowTaskViewInTaskbar(show: Boolean) {
+        viewModelScope.launch { prefsRepo.setShowTaskViewInTaskbar(show) }
+    }
+
+    fun setShowFileExplorerInTaskbar(show: Boolean) {
+        viewModelScope.launch { prefsRepo.setShowFileExplorerInTaskbar(show) }
+    }
+
+    fun setShowPinnedAppsInTaskbar(show: Boolean) {
+        viewModelScope.launch { prefsRepo.setShowPinnedAppsInTaskbar(show) }
+    }
+
+    fun setShowHiddenTrayInTaskbar(show: Boolean) {
+        viewModelScope.launch { prefsRepo.setShowHiddenTrayInTaskbar(show) }
+    }
+
+    fun setShowTrayNetwork(show: Boolean) {
+        viewModelScope.launch { prefsRepo.setShowTrayNetwork(show) }
+    }
+
+    fun setShowTrayVolume(show: Boolean) {
+        viewModelScope.launch { prefsRepo.setShowTrayVolume(show) }
+    }
+
+    fun setShowTrayBattery(show: Boolean) {
+        viewModelScope.launch { prefsRepo.setShowTrayBattery(show) }
+    }
+
+    fun setShowTrayBatteryPercent(show: Boolean) {
+        viewModelScope.launch { prefsRepo.setShowTrayBatteryPercent(show) }
+    }
+
+    fun setShowTrayClock(show: Boolean) {
+        viewModelScope.launch { prefsRepo.setShowTrayClock(show) }
+    }
+
+    fun setShowTrayDate(show: Boolean) {
+        viewModelScope.launch { prefsRepo.setShowTrayDate(show) }
+    }
+
+    fun setShowTrayNotificationDot(show: Boolean) {
+        viewModelScope.launch { prefsRepo.setShowTrayNotificationDot(show) }
+    }
+
+    fun setShowDesktopButtonInTaskbar(show: Boolean) {
+        viewModelScope.launch { prefsRepo.setShowDesktopButtonInTaskbar(show) }
+    }
+
+    fun resetTaskbarSettingsToDefault() {
+        viewModelScope.launch { prefsRepo.resetTaskbarSettingsToDefault() }
+        showToast("Pengaturan taskbar dikembalikan ke default")
     }
 
     fun setUse24HourClock(use24h: Boolean) {

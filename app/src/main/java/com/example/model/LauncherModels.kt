@@ -48,13 +48,30 @@ enum class TaskbarAlignment(val label: String) {
     LEFT("Left")
 }
 
+enum class TaskbarStyle(val label: String) {
+    DOCKED("Docked"),
+    FLOATING("Floating")
+}
+
+enum class TaskbarIconSize(val label: String, val iconDp: Int, val appIconDp: Int) {
+    SMALL("Small", 18, 22),
+    MEDIUM("Medium", 22, 26),
+    LARGE("Large", 26, 30)
+}
+
+enum class TaskbarSearchMode(val label: String) {
+    AUTO("Auto"),
+    ICON_ONLY("Icon"),
+    SEARCH_BOX("Search Box"),
+    HIDDEN("Hidden")
+}
+
 enum class ActivePanel {
     NONE,
     START_MENU,
     SEARCH,
     QUICK_SETTINGS,
     CALENDAR_NOTIFICATIONS,
-    WIDGETS,
     TASK_VIEW,
     HIDDEN_TRAY
 }
@@ -101,6 +118,25 @@ data class LauncherPreferences(
     val customWallpaperUri: String? = null,
     val desktopIconSize: DesktopIconSize = DesktopIconSize.MEDIUM,
     val taskbarAlignment: TaskbarAlignment = TaskbarAlignment.CENTER,
+    val taskbarHeightDp: Int = 54,
+    val taskbarStyle: TaskbarStyle = TaskbarStyle.DOCKED,
+    val taskbarIconSize: TaskbarIconSize = TaskbarIconSize.MEDIUM,
+    val taskbarOpacity: Float = 0.90f,
+    val taskbarShowDivider: Boolean = true,
+    val taskbarShowActiveIndicator: Boolean = true,
+    val taskbarSearchMode: TaskbarSearchMode = TaskbarSearchMode.AUTO,
+    val showTaskViewInTaskbar: Boolean = true,
+    val showFileExplorerInTaskbar: Boolean = true,
+    val showPinnedAppsInTaskbar: Boolean = true,
+    val showHiddenTrayInTaskbar: Boolean = true,
+    val showTrayNetwork: Boolean = true,
+    val showTrayVolume: Boolean = true,
+    val showTrayBattery: Boolean = true,
+    val showTrayBatteryPercent: Boolean = true,
+    val showTrayClock: Boolean = true,
+    val showTrayDate: Boolean = true,
+    val showTrayNotificationDot: Boolean = true,
+    val showDesktopButtonInTaskbar: Boolean = true,
     val use24HourClock: Boolean = true,
     val showSecondsInClock: Boolean = false,
     val hideSystemStatusBar: Boolean = false,

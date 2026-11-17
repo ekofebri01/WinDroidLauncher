@@ -75,7 +75,6 @@ import com.example.ui.components.Win11QuickSettingsFlyout
 import com.example.ui.components.Win11StartMenu
 import com.example.ui.components.Win11TaskViewFlyout
 import com.example.ui.components.Win11Taskbar
-import com.example.ui.components.Win11WidgetsFlyout
 import com.example.ui.components.Win11WindowFrame
 import com.example.ui.theme.Win11LauncherTheme
 import com.example.viewmodel.FileExplorerViewModel
@@ -413,6 +412,26 @@ private fun Win11DesktopRoot(
                                 onPickCustomWallpaper = onPickCustomWallpaper,
                                 onSetDesktopIconSize = { viewModel.setDesktopIconSize(it) },
                                 onSetTaskbarAlignment = { viewModel.setTaskbarAlignment(it) },
+                                onSetTaskbarHeightDp = { viewModel.setTaskbarHeightDp(it) },
+                                onSetTaskbarStyle = { viewModel.setTaskbarStyle(it) },
+                                onSetTaskbarIconSize = { viewModel.setTaskbarIconSize(it) },
+                                onSetTaskbarOpacity = { viewModel.setTaskbarOpacity(it) },
+                                onSetTaskbarShowDivider = { viewModel.setTaskbarShowDivider(it) },
+                                onSetTaskbarShowActiveIndicator = { viewModel.setTaskbarShowActiveIndicator(it) },
+                                onSetTaskbarSearchMode = { viewModel.setTaskbarSearchMode(it) },
+                                onSetShowTaskView = { viewModel.setShowTaskViewInTaskbar(it) },
+                                onSetShowFileExplorer = { viewModel.setShowFileExplorerInTaskbar(it) },
+                                onSetShowPinnedApps = { viewModel.setShowPinnedAppsInTaskbar(it) },
+                                onSetShowHiddenTray = { viewModel.setShowHiddenTrayInTaskbar(it) },
+                                onSetShowTrayNetwork = { viewModel.setShowTrayNetwork(it) },
+                                onSetShowTrayVolume = { viewModel.setShowTrayVolume(it) },
+                                onSetShowTrayBattery = { viewModel.setShowTrayBattery(it) },
+                                onSetShowTrayBatteryPercent = { viewModel.setShowTrayBatteryPercent(it) },
+                                onSetShowTrayClock = { viewModel.setShowTrayClock(it) },
+                                onSetShowTrayDate = { viewModel.setShowTrayDate(it) },
+                                onSetShowTrayNotificationDot = { viewModel.setShowTrayNotificationDot(it) },
+                                onSetShowDesktopButton = { viewModel.setShowDesktopButtonInTaskbar(it) },
+                                onResetTaskbarDefaults = { viewModel.resetTaskbarSettingsToDefault() },
                                 onSet24HourClock = { viewModel.setUse24HourClock(it) },
                                 onSetShowSeconds = { viewModel.setShowSecondsInClock(it) },
                                 onSetHideStatusBar = { viewModel.setHideSystemStatusBar(it) },
@@ -561,24 +580,6 @@ private fun Win11DesktopRoot(
                     )
                 }
 
-                // Widgets Flyout
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = state.activePanel == ActivePanel.WIDGETS,
-                    enter = fadeIn() + slideInVertically { it / 3 },
-                    exit = fadeOut() + slideOutVertically { it / 3 },
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(12.dp)
-                ) {
-                    Win11WidgetsFlyout(
-                        telemetry = state.telemetry,
-                        currentTimeMillis = state.currentTimeMillis,
-                        recentApps = state.recentApps,
-                        onAppClick = { viewModel.launchApp(it) },
-                        onOpenThisPc = { viewModel.openWindow(DesktopWindowType.THIS_PC) }
-                    )
-                }
-
                 // Task View Flyout
                 androidx.compose.animation.AnimatedVisibility(
                     visible = state.activePanel == ActivePanel.TASK_VIEW,
@@ -623,21 +624,18 @@ private fun Win11DesktopRoot(
             // 3. Bottom Windows 11 Taskbar
             Win11Taskbar(
                 activePanel = state.activePanel,
-                taskbarAlignment = prefs.taskbarAlignment,
+                preferences = prefs,
                 pinnedApps = state.pinnedTaskbarApps,
                 openWindows = state.openWindows,
                 activeWindowType = state.activeWindowType,
                 telemetry = state.telemetry,
                 currentTimeMillis = state.currentTimeMillis,
-                use24HourClock = prefs.use24HourClock,
-                showSecondsInClock = prefs.showSecondsInClock,
                 onStartClick = { viewModel.togglePanel(ActivePanel.START_MENU) },
                 onSearchClick = { viewModel.togglePanel(ActivePanel.SEARCH) },
                 onTaskViewClick = { viewModel.togglePanel(ActivePanel.TASK_VIEW) },
                 onFileExplorerClick = {
                     viewModel.focusOrToggleWindowFromTaskbar(DesktopWindowType.FILE_EXPLORER)
                 },
-                onWidgetsClick = { viewModel.togglePanel(ActivePanel.WIDGETS) },
                 onHiddenTrayClick = { viewModel.togglePanel(ActivePanel.HIDDEN_TRAY) },
                 onQuickSettingsClick = { viewModel.togglePanel(ActivePanel.QUICK_SETTINGS) },
                 onClockClick = { viewModel.togglePanel(ActivePanel.CALENDAR_NOTIFICATIONS) },

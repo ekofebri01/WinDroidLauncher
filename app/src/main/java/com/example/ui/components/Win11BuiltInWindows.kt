@@ -85,6 +85,9 @@ import com.example.model.InstalledApp
 import com.example.model.LauncherPreferences
 import com.example.model.SystemTelemetry
 import com.example.model.TaskbarAlignment
+import com.example.model.TaskbarIconSize
+import com.example.model.TaskbarSearchMode
+import com.example.model.TaskbarStyle
 import com.example.model.WallpaperOption
 import com.example.ui.theme.LocalWin11Colors
 import java.util.Locale
@@ -306,6 +309,26 @@ fun PersonalizeWindowContent(
     onPickCustomWallpaper: () -> Unit,
     onSetDesktopIconSize: (DesktopIconSize) -> Unit,
     onSetTaskbarAlignment: (TaskbarAlignment) -> Unit,
+    onSetTaskbarHeightDp: (Int) -> Unit,
+    onSetTaskbarStyle: (TaskbarStyle) -> Unit,
+    onSetTaskbarIconSize: (TaskbarIconSize) -> Unit,
+    onSetTaskbarOpacity: (Float) -> Unit,
+    onSetTaskbarShowDivider: (Boolean) -> Unit,
+    onSetTaskbarShowActiveIndicator: (Boolean) -> Unit,
+    onSetTaskbarSearchMode: (TaskbarSearchMode) -> Unit,
+    onSetShowTaskView: (Boolean) -> Unit,
+    onSetShowFileExplorer: (Boolean) -> Unit,
+    onSetShowPinnedApps: (Boolean) -> Unit,
+    onSetShowHiddenTray: (Boolean) -> Unit,
+    onSetShowTrayNetwork: (Boolean) -> Unit,
+    onSetShowTrayVolume: (Boolean) -> Unit,
+    onSetShowTrayBattery: (Boolean) -> Unit,
+    onSetShowTrayBatteryPercent: (Boolean) -> Unit,
+    onSetShowTrayClock: (Boolean) -> Unit,
+    onSetShowTrayDate: (Boolean) -> Unit,
+    onSetShowTrayNotificationDot: (Boolean) -> Unit,
+    onSetShowDesktopButton: (Boolean) -> Unit,
+    onResetTaskbarDefaults: () -> Unit,
     onSet24HourClock: (Boolean) -> Unit,
     onSetShowSeconds: (Boolean) -> Unit,
     onSetHideStatusBar: (Boolean) -> Unit,
@@ -643,9 +666,9 @@ fun PersonalizeWindowContent(
             Text("Choose Custom Photo from Gallery")
         }
 
-        // Appearance Toggles
+        // Theme & Display Toggles
         Text(
-            text = "Theme & Taskbar",
+            text = "Theme & Display",
             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
             color = winColors.textPrimary
         )
@@ -660,34 +683,43 @@ fun PersonalizeWindowContent(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             SettingSwitchRow("Windows 11 Dark Mode", preferences.isDarkTheme, onSetDarkTheme)
-            SettingSwitchRow("24-Hour Taskbar Clock", preferences.use24HourClock, onSet24HourClock)
-            SettingSwitchRow("Show Seconds in Clock", preferences.showSecondsInClock, onSetShowSeconds)
             SettingSwitchRow("Full-Screen Desktop (Hide Android Top Bar)", preferences.hideSystemStatusBar, onSetHideStatusBar)
         }
 
-        // Taskbar Alignment & Icon Size
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TaskbarAlignment.entries.forEach { align ->
-                val selected = preferences.taskbarAlignment == align
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (selected) winColors.accentSoft else winColors.cardSurface)
-                        .border(1.dp, winColors.subtleBorder, RoundedCornerShape(8.dp))
-                        .clickable { onSetTaskbarAlignment(align) }
-                        .padding(vertical = 10.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Taskbar: ${align.label}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (selected) Color.White else winColors.textPrimary
-                    )
-                }
-            }
-        }
+        // Full Taskbar Personalization Section
+        Win11TaskbarSettingsSection(
+            preferences = preferences,
+            onSetTaskbarAlignment = onSetTaskbarAlignment,
+            onSetTaskbarHeightDp = onSetTaskbarHeightDp,
+            onSetTaskbarStyle = onSetTaskbarStyle,
+            onSetTaskbarIconSize = onSetTaskbarIconSize,
+            onSetTaskbarOpacity = onSetTaskbarOpacity,
+            onSetTaskbarShowDivider = onSetTaskbarShowDivider,
+            onSetTaskbarShowActiveIndicator = onSetTaskbarShowActiveIndicator,
+            onSetTaskbarSearchMode = onSetTaskbarSearchMode,
+            onSetShowTaskView = onSetShowTaskView,
+            onSetShowFileExplorer = onSetShowFileExplorer,
+            onSetShowPinnedApps = onSetShowPinnedApps,
+            onSetShowHiddenTray = onSetShowHiddenTray,
+            onSetShowTrayNetwork = onSetShowTrayNetwork,
+            onSetShowTrayVolume = onSetShowTrayVolume,
+            onSetShowTrayBattery = onSetShowTrayBattery,
+            onSetShowTrayBatteryPercent = onSetShowTrayBatteryPercent,
+            onSetShowTrayClock = onSetShowTrayClock,
+            onSetShowTrayDate = onSetShowTrayDate,
+            onSetShowTrayNotificationDot = onSetShowTrayNotificationDot,
+            onSetShowDesktopButton = onSetShowDesktopButton,
+            onSet24HourClock = onSet24HourClock,
+            onSetShowSeconds = onSetShowSeconds,
+            onResetTaskbarDefaults = onResetTaskbarDefaults
+        )
 
+        // Desktop Icon Size
+        Text(
+            text = "Desktop Icon Size",
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = winColors.textPrimary
+        )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             DesktopIconSize.entries.forEach { size ->
                 val selected = preferences.desktopIconSize == size
